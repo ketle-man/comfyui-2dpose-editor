@@ -25,7 +25,7 @@ Drag joints to pose the figure, then capture it as an `IMAGE` output.
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/YOUR_USERNAME/2dpose_custom_cm.git
+git clone https://github.com/ketle-man/comfyui-2dpose-editor.git
 ```
 
 ### Option B: Manual
