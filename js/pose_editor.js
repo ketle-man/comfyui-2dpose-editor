@@ -47,8 +47,8 @@ app.registerExtension({
             const btnRow = document.createElement("div");
             btnRow.style.cssText = "display:flex;gap:8px;margin-top:8px;";
 
-            const captureBtn = makeButton("📸 キャプチャ", "#4a90d9");
-            const resetBtn   = makeButton("🔄 リセット",   "#6c757d");
+            const captureBtn = makeButton("📸 Capture", "#4a90d9");
+            const resetBtn   = makeButton("🔄 Reset",   "#6c757d");
 
             btnRow.appendChild(captureBtn);
             btnRow.appendChild(resetBtn);
@@ -65,10 +65,10 @@ app.registerExtension({
                 if (imgWidget) {
                     imgWidget.value = dataUrl;
                 }
-                captureBtn.textContent = "✅ キャプチャ完了";
+                captureBtn.textContent = "✅ Captured!";
                 captureBtn.style.background = "#28a745";
                 setTimeout(() => {
-                    captureBtn.textContent = "📸 キャプチャ";
+                    captureBtn.textContent = "📸 Capture";
                     captureBtn.style.background = "#4a90d9";
                 }, 1800);
             });
