@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>2D Rigging Pose Editor - with Eyes</title>
+    <style>
+        body {
+            display: flex; flex-direction: column; align-items: center;
+            font-family: sans-serif; background-color: #2c2c2c; color: white; margin-top: 20px;
+        }
+        canvas {
+            background-color: #e0e0e0; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            cursor: grab; border-radius: 8px;
+        }
+        canvas:active { cursor: grabbing; }
+        p { margin-top: 10px; color: #ccc; font-size: 14px; text-align: center; line-height: 1.6; }
+        .highlight { color: #ff8888; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>簡易 2D 人物ポーズエディタ (視線追加版)</h2>
+    <canvas id="canvas" width="600" height="600"></canvas>
+    <p>青い点：回転のみ（長さ固定）<br>
+    <span class="highlight">赤い点（肩・腰）：回転 ＋ 引っ張って長さを変える（スライド）が可能</span><br>
+    <strong>★ 顔の「黒目」を直接ドラッグすると、視線を左右上下に動かせます。</strong></p>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // ==========================================
+    // 0. 仮のパーツ画像を作る補助関数
+    // ==========================================
+    function createDummyImage(color, text, width, height) {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width; tempCanvas.height = height;
+        const tCtx = tempCanvas.getContext('2d');
+        
+        tCtx.fillStyle = color;
+        tCtx.beginPath(); tCtx.roundRect(0, 0, width, height, 15); tCtx.fill();
+        tCtx.strokeStyle = '#333'; tCtx.lineWidth = 2; tCtx.stroke();
+
+        // 顔の画像だけは文字を描かない（目が見えにくくなるため）
+        if (text !== 'Head') {
+            tCtx.fillStyle = '#333'; tCtx.font = '14px Arial';
+            tCtx.textAlign = 'center'; tCtx.textBaseline = 'middle';
+            tCtx.fillText(text, width / 2, height / 2);
+        }
+
+        const img = new Image(); img.src = tempCanvas.toDataURL();
+        return img;
+    }
+
+    const imgHead = createDummyImage('#ffcccc', 'Head', 55, 75);
+    const imgNeck = createDummyImage('#ffddcc', 'Neck', 26, 35); 
+    const imgChest = createDummyImage('#ccffcc', 'Chest', 85, 75); 
+    const imgAbdomen = createDummyImage('#aaddaa', 'Abdomen', 75, 65); 
+    
+    const imgArm = createDummyImage('#ccccff', 'Arm', 30, 80);
+    const imgForeArm = createDummyImage('#ccccff', 'Fore', 26, 70);
+    const imgHand = createDummyImage('#ffeedd', 'Hand', 24, 30);
+    
+    const imgLeg = createDummyImage('#ffffcc', 'Leg', 40, 100);
+    const imgShin = createDummyImage('#ffffcc', 'Shin', 34, 95);
+    const imgFoot = createDummyImage('#dddddd', 'Foot', 28, 40);
+
+    // ==========================================
+    // 1. ボーン（骨）クラスの定義
+    // ==========================================
+    class Bone {
+        constructor(name, length, localAngle, image, width, parent = null, isSlidable = false, minLen = 10, maxLen = 100) {
+            this.name = name;
+            this.length = length;
+            this.localAngle = localAngle; 
+            this.image = image;
+            this.width = width;
+            this.parent = parent;
+            this.isSlidable = isSlidable;
+            this.minLen = minLen;
+            this.maxLen = maxLen;
+            
+            this.children = [];
+            if (parent) parent.children.push(this);
+
+            this.gx = 0; this.gy = 0; this.gAngle = 0;
+            this.endX = 0; this.endY = 0;
+        }
+
+        // 親から連鎖的に座標を計算（自動で目も見えない骨も計算される）
+        update(parentX, parentY, parentAngle) {
+            this.gx = parentX; this.gy = parentY;
+            this.gAngle = parentAngle + this.localAngle;
+            
+            this.endX = this.gx + Math.cos(this.gAngle) * this.length;
+            this.endY = this.gy + Math.sin(this.gAngle) * this.length;
+
+            for (let child of this.children) {
+                child.update(this.endX, this.endY, this.gAngle);
+            }
+        }
+    }
+
+    // ==========================================
+    // 2. 人型リギングの構築
+    // ==========================================
+    const rootX = 300; const rootY = 320; const rootAngle = 0;
+    const root = new Bone("Root", 0, 0, null, 0);
+
+    // 胴体・首・頭
+    const abdomen = new Bone("Abdomen", 55, -Math.PI/2, imgAbdomen, 75, root);
+    const chest = new Bone("Chest", 65, 0, imgChest, 85, abdomen);
+    const neck = new Bone("Neck", 20, 0, imgNeck, 26, chest);
+    const head = new Bone("Head", 50, 0, imgHead, 55, neck);
+
+    // ★ 目の追加 ★
+    // 目玉の「基準位置」を決める見えないボーン（首の付け根から顔の中央へ左右に伸ばす）
+    const leftEyeBase = new Bone("LeftEyeBase", 28, -0.4, null, 0, neck);
+    const rightEyeBase = new Bone("RightEyeBase", 28, 0.4, null, 0, neck);
+
+    // 実際の目（基準位置から0〜7ピクセルの範囲でスライド可能な黒点）
+    const leftEye = new Bone("LeftEye", 2, 0, null, 0, leftEyeBase, true, 0, 7);
+    const rightEye = new Bone("RightEye", 2, 0, null, 0, rightEyeBase, true, 0, 7);
+
+    // 肩・腕
+    const leftShoulder = new Bone("LeftShoulder", 35, -Math.PI/2, null, 0, chest, true, 15, 80);
+    const rightShoulder = new Bone("RightShoulder", 35, Math.PI/2, null, 0, chest, true, 15, 80);
+    const leftArm = new Bone("LeftArm", 70, -Math.PI/2 + 0.3, imgArm, 30, leftShoulder);
+    const leftForeArm = new Bone("LeftForeArm", 60, 0, imgForeArm, 26, leftArm);
+    const leftHand = new Bone("LeftHand", 25, 0, imgHand, 24, leftForeArm);
+    const rightArm = new Bone("RightArm", 70, Math.PI/2 - 0.3, imgArm, 30, rightShoulder);
+    const rightForeArm = new Bone("RightForeArm", 60, 0, imgForeArm, 26, rightArm);
+    const rightHand = new Bone("RightHand", 25, 0, imgHand, 24, rightForeArm);
+
+    // 腰・足
+    const leftHip = new Bone("LeftHip", 25, Math.PI, null, 0, root, true, 10, 60);
+    const rightHip = new Bone("RightHip", 25, 0, null, 0, root, true, 10, 60);
+    const leftLeg = new Bone("LeftLeg", 90, -Math.PI/2 + 0.1, imgLeg, 40, leftHip);
+    const leftShin = new Bone("LeftShin", 85, 0, imgShin, 34, leftLeg);
+    const leftFoot = new Bone("LeftFoot", 30, Math.PI/2, imgFoot, 28, leftShin);
+    const rightLeg = new Bone("RightLeg", 90, Math.PI/2 - 0.1, imgLeg, 40, rightHip);
+    const rightShin = new Bone("RightShin", 85, 0, imgShin, 34, rightLeg);
+    const rightFoot = new Bone("RightFoot", 30, Math.PI/2, imgFoot, 28, rightShin);
+
+    // 描画順（配列の後ろにあるほど手前に描画され、クリック優先度も高くなる）
+    const drawOrder = [
+        leftHand, leftForeArm, leftArm, leftShoulder, 
+        leftFoot, leftShin, leftLeg, leftHip,         
+        abdomen, chest, neck, head,                   
+        leftEye, rightEye, // ★ 顔の上に描画し、クリックしやすくする
+        rightFoot, rightShin, rightLeg, rightHip,     
+        rightHand, rightForeArm, rightArm, rightShoulder 
+    ];
+
+    const bones = drawOrder;
+
+    // ==========================================
+    // 3. 描画処理
+    // ==========================================
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // --- A. 画像と目の描画 ---
+        for (let bone of drawOrder) {
+            if (bone.image) {
+                ctx.save();
+                ctx.translate(bone.gx, bone.gy);
+                ctx.rotate(bone.gAngle - Math.PI / 2);
+                ctx.drawImage(bone.image, -bone.width / 2, 0, bone.width, bone.length + 10);
+                ctx.restore();
+            } else if (bone.name.includes("Eye")) {
+                // ★ 目の描画（黒い点）
+                ctx.beginPath();
+                ctx.arc(bone.endX, bone.endY, 5, 0, Math.PI * 2);
+                ctx.fillStyle = '#222';
+                ctx.fill();
+
+                // 選択中（ドラッグ中）の目は黄色くハイライト
+                if (bone === selectedBone) {
+                    ctx.beginPath();
+                    ctx.arc(bone.endX, bone.endY, 8, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 255, 0, 0.9)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // --- B. 骨組みの線 ---
+        ctx.lineWidth = 2;
+        for (let bone of bones) {
+            // Rootや目は線を引かない
+            if (bone.name === "Root" || bone.name.includes("Eye")) continue;
+            
+            ctx.beginPath();
+            ctx.moveTo(bone.gx, bone.gy);
+            ctx.lineTo(bone.endX, bone.endY);
+            
+            if (bone.isSlidable) {
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; // スライド可能は赤点線
+                ctx.setLineDash([5, 5]);
+            } else {
+                ctx.strokeStyle = 'rgba(100, 100, 100, 0.3)'; // 通常は薄いグレー
+                ctx.setLineDash([]);
+            }
+            ctx.stroke();
+        }
+        ctx.setLineDash([]); 
+
+        // --- C. 操作用UI（関節ポイント）の描画 ---
+        for (let bone of bones) {
+            if (bone.name === "Root" || bone.name.includes("Eye")) continue; // 目は黒点そのものを掴むのでUI不要
+            
+            ctx.beginPath();
+            ctx.arc(bone.endX, bone.endY, 8, 0, Math.PI * 2);
+            
+            let fillColor = bone.isSlidable ? 'rgba(255, 100, 100, 0.7)' : 'rgba(0, 150, 255, 0.5)';
+            if (bone === selectedBone) fillColor = 'rgba(255, 255, 0, 0.9)'; 
+            
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+            ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
+        }
+    }
+
+    // ==========================================
+    // 4. マウス操作
+    // ==========================================
+    let isDragging = false;
+    let selectedBone = null;
+
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        let closestDist = Infinity;
+        selectedBone = null;
+
+        // 手前（配列の後ろ）から判定
+        for (let i = bones.length - 1; i >= 0; i--) {
+            const bone = bones[i];
+            const dist = Math.hypot(bone.endX - mouseX, bone.endY - mouseY);
+            
+            // 目は小さいので少しシビアに(15)、他は掴みやすく(20)
+            const hitRadius = bone.name.includes("Eye") ? 15 : 20;
+
+            if (dist < hitRadius && dist < closestDist) { 
+                closestDist = dist;
+                selectedBone = bone;
+            }
+        }
+        if (selectedBone) isDragging = true;
+        draw();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDragging || !selectedBone) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // 角度の更新
+        const targetGlobalAngle = Math.atan2(mouseY - selectedBone.gy, mouseX - selectedBone.gx);
+        const parentGlobalAngle = selectedBone.parent ? selectedBone.parent.gAngle : rootAngle;
+        selectedBone.localAngle = targetGlobalAngle - parentGlobalAngle;
+
+        // スライド処理（肩・腰・目）
+        if (selectedBone.isSlidable) {
+            const dist = Math.hypot(mouseX - selectedBone.gx, mouseY - selectedBone.gy);
+            selectedBone.length = Math.max(selectedBone.minLen, Math.min(dist, selectedBone.maxLen));
+        }
+
+        root.update(rootX, rootY, rootAngle);
+        draw();
+    });
+
+    canvas.addEventListener('mouseup', () => { isDragging = false; selectedBone = null; draw(); });
+    canvas.addEventListener('mouseleave', () => { isDragging = false; selectedBone = null; draw(); });
+
+    setTimeout(() => {
+        root.update(rootX, rootY, rootAngle);
+        draw();
+    }, 100);
+
+</script>
+</body>
+</html>
