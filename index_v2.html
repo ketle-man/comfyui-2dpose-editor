@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>2D Rigging Pose Editor - Texture Atlas (UV)</title>
+    <style>
+        body {
+            display: flex; flex-direction: column; align-items: center;
+            font-family: sans-serif; background-color: #2c2c2c; color: white; margin-top: 20px;
+        }
+        .controls {
+            margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 700px;
+        }
+        .control-group {
+            background: #3c3c3c; padding: 10px; border-radius: 8px; display: flex; gap: 10px; align-items: center;
+        }
+        button {
+            padding: 8px 16px; font-size: 14px; font-weight: bold; cursor: pointer;
+            background-color: #4CAF50; color: white; border: none; border-radius: 4px; transition: 0.2s;
+        }
+        button:hover { background-color: #45a049; }
+        .btn-hand { background-color: #ff9800; } .btn-hand:hover { background-color: #e68a00; }
+        .btn-body { background-color: #9c27b0; } .btn-body:hover { background-color: #7b1fa2; }
+        
+        canvas {
+            background-color: #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            cursor: grab; border-radius: 8px;
+        }
+        canvas:active { cursor: grabbing; }
+        p { margin-top: 10px; color: #ccc; font-size: 14px; text-align: center; line-height: 1.6; }
+        .highlight { color: #ff8888; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>簡易 2D 人物ポーズエディタ (1枚絵 UV展開版)</h2>
+    
+    <div class="controls">
+        <div class="control-group">
+            <button id="btn-toggle-head" class="btn-body">👤 頭: 正面</button>
+            <button id="btn-toggle-body" class="btn-body">👕 体: 正面</button>
+        </div>
+        <div class="control-group">
+            <button id="btn-toggle-lhand" class="btn-hand">左手: ✊ 握る</button>
+            <button id="btn-toggle-rhand" class="btn-hand">右手: ✊ 握る</button>
+        </div>
+        <div class="control-group">
+            <button id="btn-export">💾 画像(PNG)で保存</button>
+        </div>
+    </div>
+
+    <canvas id="canvas" width="600" height="600"></canvas>
+    
+    <p>
+    【カメラ】 ホイール：ズーム ／ 背景ドラッグ：移動<br>
+    青い点：回転 ／ <span class="highlight">赤い点：回転＋スライド</span> ／ 黒点：視線<br>
+    ※裏側では1枚の画像からパーツを切り抜いて表示しています
+    </p>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const camera = { x: 0, y: 0, zoom: 1.0 };
+    function screenToWorld(screenX, screenY) {
+        return { x: (screenX - canvas.width / 2) / camera.zoom + canvas.width / 2 - camera.x,
+                 y: (screenY - canvas.height / 2) / camera.zoom + canvas.height / 2 - camera.y };
+    }
+
+    // ==========================================
+    // ★ 0. テクスチャアトラス（1枚絵）とUV座標の定義
+    // ==========================================
+    
+    // ① UV情報（1枚の画像の中の、どの座標からどれくらいのサイズを切り抜くか）の辞書
+    const uvMap = {
+        // 正面パーツ
+        head:       { x: 0,   y: 0,   w: 55, h: 75 },
+        neck:       { x: 60,  y: 0,   w: 26, h: 35 },
+        chest:      { x: 90,  y: 0,   w: 85, h: 75 },
+        abdomen:    { x: 180, y: 0,   w: 75, h: 65 },
+        arm:        { x: 0,   y: 80,  w: 30, h: 80 },
+        foreArm:    { x: 40,  y: 80,  w: 26, h: 70 },
+        handClosed: { x: 70,  y: 80,  w: 24, h: 30 },
+        handOpen:   { x: 100, y: 80,  w: 34, h: 36 },
+        leg:        { x: 0,   y: 170, w: 40, h: 100 },
+        shin:       { x: 50,  y: 170, w: 34, h: 95 },
+        foot:       { x: 90,  y: 170, w: 28, h: 40 },
+        
+        // 背面・切り替え用パーツ
+        headBack:   { x: 0,   y: 280, w: 55, h: 75 },
+        chestBack:  { x: 60,  y: 280, w: 85, h: 75 },
+        abdomenBack:{ x: 150, y: 280, w: 75, h: 65 }
+    };
+
+    // ② 1枚の大きな画像（アトラス）を生成する関数（自前の画像を使う場合は不要）
+    function createDummyAtlas() {
+        const tCanvas = document.createElement('canvas');
+        tCanvas.width = 512; tCanvas.height = 512; // 512x512の1枚絵キャンバス
+        const tCtx = tCanvas.getContext('2d');
+        
+        // 各UV情報にしたがって、1枚のキャンバスにパーツを描き込む
+        const colors = {
+            head:'#ffcccc', neck:'#ffddcc', chest:'#ccffcc', abdomen:'#aaddaa',
+            arm:'#ccccff', foreArm:'#ccccff', handClosed:'#ffeedd', handOpen:'#ffeedd',
+            leg:'#ffffcc', shin:'#ffffcc', foot:'#dddddd',
+            headBack:'#eebbbb', chestBack:'#bbddbb', abdomenBack:'#99cc99'
+        };
+
+        for (const [key, uv] of Object.entries(uvMap)) {
+            tCtx.fillStyle = colors[key];
+            tCtx.beginPath(); tCtx.roundRect(uv.x, uv.y, uv.w, uv.h, 15); tCtx.fill();
+            tCtx.strokeStyle = '#333'; tCtx.lineWidth = 2; tCtx.stroke();
+            
+            // テキスト描画（後頭部以外）
+            if (key !== 'head' && key !== 'headBack') {
+                tCtx.fillStyle = '#333'; tCtx.font = '12px Arial'; tCtx.textAlign = 'center'; tCtx.textBaseline = 'middle';
+                tCtx.fillText(key.replace('Back','').replace('Closed','').replace('Open',''), uv.x + uv.w/2, uv.y + uv.h/2);
+            }
+        }
+        return tCanvas.toDataURL();
+    }
+
+    // ★ 実際の画像を読み込む場合は以下のように書きます ★
+    // const atlasImage = new Image();
+    // atlasImage.src = './images/my_sprite_sheet.png';
+    
+    // 今回はダミーの1枚絵を生成してセット
+    const atlasImage = new Image();
+    atlasImage.src = createDummyAtlas();
+
+    // ==========================================
+    // 1. ボーンクラス定義
+    // ==========================================
+    class Bone {
+        // constructor引数を image から uv(切り抜き座標) に変更
+        constructor(name, length, localAngle, uv, width, parent = null, isSlidable = false, minLen = 10, maxLen = 100) {
+            this.name = name; this.length = length; this.localAngle = localAngle; 
+            this.uv = uv; // ★ ここに {x, y, w, h} が入る
+            this.width = width; this.parent = parent;
+            this.isSlidable = isSlidable; this.minLen = minLen; this.maxLen = maxLen;
+            this.visible = true;
+            this.children = []; if (parent) parent.children.push(this);
+            this.gx = 0; this.gy = 0; this.gAngle = 0; this.endX = 0; this.endY = 0;
+        }
+        update(parentX, parentY, parentAngle) {
+            this.gx = parentX; this.gy = parentY; this.gAngle = parentAngle + this.localAngle;
+            this.endX = this.gx + Math.cos(this.gAngle) * this.length; this.endY = this.gy + Math.sin(this.gAngle) * this.length;
+            for (let child of this.children) child.update(this.endX, this.endY, this.gAngle);
+        }
+    }
+
+    // ==========================================
+    // 2. リギングの構築（各ボーンにUVを割り当てる）
+    // ==========================================
+    const rootX = 300; const rootY = 320; const rootAngle = 0;
+    const root = new Bone("Root", 0, 0, null, 0);
+
+    const abdomen = new Bone("Abdomen", 55, -Math.PI/2, uvMap.abdomen, 75, root);
+    const chest = new Bone("Chest", 65, 0, uvMap.chest, 85, abdomen);
+    const neck = new Bone("Neck", 20, 0, uvMap.neck, 26, chest);
+    const head = new Bone("Head", 50, 0, uvMap.head, 55, neck);
+
+    const leftEyeBase = new Bone("LeftEyeBase", 28, -0.4, null, 0, neck);
+    const rightEyeBase = new Bone("RightEyeBase", 28, 0.4, null, 0, neck);
+    const leftEye = new Bone("LeftEye", 2, 0, null, 0, leftEyeBase, true, 0, 7);
+    const rightEye = new Bone("RightEye", 2, 0, null, 0, rightEyeBase, true, 0, 7);
+
+    const leftShoulder = new Bone("LeftShoulder", 35, -Math.PI/2, null, 0, chest, true, 15, 80);
+    const rightShoulder = new Bone("RightShoulder", 35, Math.PI/2, null, 0, chest, true, 15, 80);
+    const leftArm = new Bone("LeftArm", 70, -Math.PI/2 + 0.3, uvMap.arm, 30, leftShoulder);
+    const leftForeArm = new Bone("LeftForeArm", 60, 0, uvMap.foreArm, 26, leftArm);
+    const rightArm = new Bone("RightArm", 70, Math.PI/2 - 0.3, uvMap.arm, 30, rightShoulder);
+    const rightForeArm = new Bone("RightForeArm", 60, 0, uvMap.foreArm, 26, rightArm);
+    const leftHand = new Bone("LeftHand", 25, 0, uvMap.handClosed, 24, leftForeArm);
+    const rightHand = new Bone("RightHand", 25, 0, uvMap.handClosed, 24, rightForeArm);
+
+    const leftHip = new Bone("LeftHip", 25, Math.PI, null, 0, root, true, 10, 60);
+    const rightHip = new Bone("RightHip", 25, 0, null, 0, root, true, 10, 60);
+    const leftLeg = new Bone("LeftLeg", 90, -Math.PI/2 + 0.1, uvMap.leg, 40, leftHip);
+    const leftShin = new Bone("LeftShin", 85, 0, uvMap.shin, 34, leftLeg);
+    const leftFoot = new Bone("LeftFoot", 30, Math.PI/2, uvMap.foot, 28, leftShin);
+    const rightLeg = new Bone("RightLeg", 90, Math.PI/2 - 0.1, uvMap.leg, 40, rightHip);
+    const rightShin = new Bone("RightShin", 85, 0, uvMap.shin, 34, rightLeg);
+    const rightFoot = new Bone("RightFoot", 30, Math.PI/2, uvMap.foot, 28, rightShin);
+
+    const drawOrder = [
+        leftHand, leftForeArm, leftArm, leftShoulder, 
+        leftFoot, leftShin, leftLeg, leftHip,         
+        abdomen, chest, neck, head,                   
+        leftEye, rightEye, 
+        rightFoot, rightShin, rightLeg, rightHip,     
+        rightHand, rightForeArm, rightArm, rightShoulder 
+    ];
+    const bones = drawOrder;
+
+    // ==========================================
+    // 3. 描画処理（★1枚絵からの切り出し描画）
+    // ==========================================
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(camera.zoom, camera.zoom);
+        ctx.translate(-canvas.width / 2 + camera.x, -canvas.height / 2 + camera.y);
+
+        for (let bone of drawOrder) {
+            if (!bone.visible) continue;
+
+            if (bone.uv) {
+                // ★ ここが1枚絵（アトラス）から切り抜いて描画する処理 ★
+                ctx.save();
+                ctx.translate(bone.gx, bone.gy);
+                ctx.rotate(bone.gAngle - Math.PI / 2);
+                
+                // drawImage(画像, 切り抜き元のX, Y, 幅, 高さ, キャンバス上のX, Y, 幅, 高さ)
+                ctx.drawImage(
+                    atlasImage, 
+                    bone.uv.x, bone.uv.y, bone.uv.w, bone.uv.h, 
+                    -bone.width / 2, 0, bone.width, bone.length + 10
+                );
+                ctx.restore();
+            } else if (bone.name.includes("Eye")) {
+                ctx.beginPath(); ctx.arc(bone.endX, bone.endY, 5, 0, Math.PI * 2); ctx.fillStyle = '#222'; ctx.fill();
+                if (bone === selectedBone) {
+                    ctx.beginPath(); ctx.arc(bone.endX, bone.endY, 8, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,255,0,0.9)'; ctx.lineWidth = 2; ctx.stroke();
+                }
+            }
+        }
+
+        ctx.lineWidth = 2 / camera.zoom;
+        for (let bone of bones) {
+            if (!bone.visible || bone.name === "Root" || bone.name.includes("Eye")) continue;
+            ctx.beginPath(); ctx.moveTo(bone.gx, bone.gy); ctx.lineTo(bone.endX, bone.endY);
+            ctx.strokeStyle = bone.isSlidable ? 'rgba(255, 0, 0, 0.8)' : 'rgba(100, 100, 100, 0.3)';
+            ctx.setLineDash(bone.isSlidable ? [5 / camera.zoom, 5 / camera.zoom] : []);
+            ctx.stroke();
+        }
+        ctx.setLineDash([]); 
+
+        for (let bone of bones) {
+            if (!bone.visible || bone.name === "Root" || bone.name.includes("Eye")) continue;
+            ctx.beginPath(); ctx.arc(bone.endX, bone.endY, 8 / camera.zoom, 0, Math.PI * 2);
+            let fillColor = bone.isSlidable ? 'rgba(255, 100, 100, 0.7)' : 'rgba(0, 150, 255, 0.5)';
+            if (bone === selectedBone) fillColor = 'rgba(255, 255, 0, 0.9)'; 
+            ctx.fillStyle = fillColor; ctx.fill();
+            ctx.strokeStyle = '#333'; ctx.lineWidth = 1 / camera.zoom; ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // ==========================================
+    // 4. マウス操作
+    // ==========================================
+    let isDragging = false; let isPanning = false; let selectedBone = null; let lastMouseX = 0; let lastMouseY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect(); const mouseX = e.clientX - rect.left; const mouseY = e.clientY - rect.top;
+        lastMouseX = mouseX; lastMouseY = mouseY;
+        const worldPos = screenToWorld(mouseX, mouseY);
+        let closestDist = Infinity; selectedBone = null;
+        for (let i = bones.length - 1; i >= 0; i--) {
+            const bone = bones[i];
+            if (!bone.visible) continue;
+            const dist = Math.hypot(bone.endX - worldPos.x, bone.endY - worldPos.y);
+            const hitRadius = (bone.name.includes("Eye") ? 15 : 20) / camera.zoom;
+            if (dist < hitRadius && dist < closestDist) { closestDist = dist; selectedBone = bone; }
+        }
+        if (selectedBone) isDragging = true; else isPanning = true;
+        draw();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect(); const mouseX = e.clientX - rect.left; const mouseY = e.clientY - rect.top;
+        if (isPanning) {
+            camera.x += (mouseX - lastMouseX) / camera.zoom; camera.y += (mouseY - lastMouseY) / camera.zoom;
+            lastMouseX = mouseX; lastMouseY = mouseY; draw(); return;
+        }
+        if (!isDragging || !selectedBone) return;
+        const worldPos = screenToWorld(mouseX, mouseY);
+        const targetGlobalAngle = Math.atan2(worldPos.y - selectedBone.gy, worldPos.x - selectedBone.gx);
+        const parentGlobalAngle = selectedBone.parent ? selectedBone.parent.gAngle : rootAngle;
+        selectedBone.localAngle = targetGlobalAngle - parentGlobalAngle;
+        if (selectedBone.isSlidable) {
+            const dist = Math.hypot(worldPos.x - selectedBone.gx, worldPos.y - selectedBone.gy);
+            selectedBone.length = Math.max(selectedBone.minLen, Math.min(dist, selectedBone.maxLen));
+        }
+        root.update(rootX, rootY, rootAngle); draw();
+    });
+
+    canvas.addEventListener('mouseup', () => { isDragging = false; isPanning = false; selectedBone = null; draw(); });
+    canvas.addEventListener('mouseleave', () => { isDragging = false; isPanning = false; selectedBone = null; draw(); });
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault(); camera.zoom = Math.max(0.2, Math.min(5.0, camera.zoom - e.deltaY * 0.001)); draw();
+    }, { passive: false });
+
+    // ==========================================
+    // 5. UIボタンの機能（★画像の切り替えではなく、UVの切り替えに変更）
+    // ==========================================
+    let isHeadBack = false; let isBodyBack = false;
+
+    // 頭の切り替え
+    const btnToggleHead = document.getElementById('btn-toggle-head');
+    btnToggleHead.addEventListener('click', () => {
+        isHeadBack = !isHeadBack;
+        if (isHeadBack) {
+            head.uv = uvMap.headBack; // 画像そのものではなく、参照するUV座標を変更するだけ！
+            leftEye.visible = false; rightEye.visible = false;
+            btnToggleHead.textContent = "👤 頭: 後頭部";
+        } else {
+            head.uv = uvMap.head;
+            leftEye.visible = true; rightEye.visible = true;
+            btnToggleHead.textContent = "👤 頭: 正面";
+        }
+        draw();
+    });
+
+    // 体の切り替え
+    const btnToggleBody = document.getElementById('btn-toggle-body');
+    btnToggleBody.addEventListener('click', () => {
+        isBodyBack = !isBodyBack;
+        if (isBodyBack) {
+            chest.uv = uvMap.chestBack;
+            abdomen.uv = uvMap.abdomenBack;
+            btnToggleBody.textContent = "👕 体: 背面";
+        } else {
+            chest.uv = uvMap.chest;
+            abdomen.uv = uvMap.abdomen;
+            btnToggleBody.textContent = "👕 体: 正面";
+        }
+        draw();
+    });
+
+    // 手の切り替え
+    let isLeftOpen = false; let isRightOpen = false;
+    const btnToggleLHand = document.getElementById('btn-toggle-lhand');
+    btnToggleLHand.addEventListener('click', () => {
+        isLeftOpen = !isLeftOpen;
+        if (isLeftOpen) { leftHand.uv = uvMap.handOpen; leftHand.width = 34; leftHand.length = 32; btnToggleLHand.textContent = "左手: 🖐 開く"; }
+        else { leftHand.uv = uvMap.handClosed; leftHand.width = 24; leftHand.length = 25; btnToggleLHand.textContent = "左手: ✊ 握る"; }
+        draw();
+    });
+    const btnToggleRHand = document.getElementById('btn-toggle-rhand');
+    btnToggleRHand.addEventListener('click', () => {
+        isRightOpen = !isRightOpen;
+        if (isRightOpen) { rightHand.uv = uvMap.handOpen; rightHand.width = 34; rightHand.length = 32; btnToggleRHand.textContent = "右手: 🖐 開く"; }
+        else { rightHand.uv = uvMap.handClosed; rightHand.width = 24; rightHand.length = 25; btnToggleRHand.textContent = "右手: ✊ 握る"; }
+        draw();
+    });
+
+    document.getElementById('btn-export').addEventListener('click', () => {
+        const link = document.createElement("a"); link.download = "pose_export.png"; link.href = canvas.toDataURL("image/png"); link.click();
+    });
+
+    setTimeout(() => { root.update(rootX, rootY, rootAngle); draw(); }, 100);
+
+</script>
+</body>
+</html>

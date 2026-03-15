@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Atlas Template Generator 1024x1024</title>
+<style>
+  body { background:#1a1a1a; color:#eee; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px; gap:14px; }
+  canvas { border:2px solid #555; }
+  button { padding:10px 28px; font-size:15px; font-weight:bold; background:#4CAF50; color:#fff; border:none; border-radius:6px; cursor:pointer; }
+  button:hover { background:#45a049; }
+  p { color:#aaa; font-size:13px; text-align:center; line-height:1.8; max-width:700px; }
+  table { border-collapse:collapse; font-size:12px; margin-top:8px; }
+  th,td { border:1px solid #555; padding:4px 10px; }
+  th { background:#333; }
+</style>
+</head>
+<body>
+<h2>2D Pose Editor — Atlas Template (1024×1024)</h2>
+
+<canvas id="c" width="1024" height="1024"></canvas>
+
+<button id="btn-save">💾 PNG として保存</button>
+
+<p>
+  各パーツは <strong>ガイド枠（色付き）</strong> と <strong>ラベル</strong> が描かれています。<br>
+  このPNGをペイントソフト等で開き、各枠の中にキャラクターのパーツを描いてください。<br>
+  完成したら、ノードの <strong>🖼 Texture</strong> ボタンで読み込みます。
+</p>
+
+<table>
+<tr><th>パーツ名</th><th>UV(x, y, w, h) ※スケール×2</th><th>用途</th></tr>
+<tr><td>head</td><td>0, 0, 110, 150</td><td>正面・頭部</td></tr>
+<tr><td>neck</td><td>120, 0, 52, 70</td><td>首</td></tr>
+<tr><td>chest</td><td>180, 0, 170, 150</td><td>胸・上半身（正面）</td></tr>
+<tr><td>abdomen</td><td>360, 0, 150, 130</td><td>腹部（正面）</td></tr>
+<tr><td>arm</td><td>0, 160, 60, 160</td><td>上腕（左右共通）</td></tr>
+<tr><td>foreArm</td><td>80, 160, 52, 140</td><td>前腕（左右共通）</td></tr>
+<tr><td>handClosed</td><td>140, 160, 48, 60</td><td>握り手（左右共通）</td></tr>
+<tr><td>handOpen</td><td>200, 160, 68, 72</td><td>開き手（左右共通）</td></tr>
+<tr><td>leg</td><td>0, 340, 80, 200</td><td>太もも（左右共通）</td></tr>
+<tr><td>shin</td><td>100, 340, 68, 190</td><td>すね（左右共通）</td></tr>
+<tr><td>foot</td><td>180, 340, 56, 80</td><td>足（左右共通）</td></tr>
+<tr><td>headBack</td><td>0, 560, 110, 150</td><td>後頭部</td></tr>
+<tr><td>chestBack</td><td>120, 560, 170, 150</td><td>胸・上半身（背面）</td></tr>
+<tr><td>abdomenBack</td><td>300, 560, 150, 130</td><td>腹部（背面）</td></tr>
+</table>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// ---- UV定義（1024x1024用 = 元の2倍スケール） ----
+const uvMap = {
+    head:        { x:   0, y:   0, w: 110, h: 150, label: 'head\n(正面・顔)',    color: '#ffaaaa' },
+    neck:        { x: 120, y:   0, w:  52, h:  70, label: 'neck\n(首)',          color: '#ffccaa' },
+    chest:       { x: 180, y:   0, w: 170, h: 150, label: 'chest\n(胸・正面)',   color: '#aaffaa' },
+    abdomen:     { x: 360, y:   0, w: 150, h: 130, label: 'abdomen\n(腹・正面)', color: '#88cc88' },
+    arm:         { x:   0, y: 160, w:  60, h: 160, label: 'arm\n(上腕)',         color: '#aaaaff' },
+    foreArm:     { x:  80, y: 160, w:  52, h: 140, label: 'foreArm\n(前腕)',     color: '#aaaaff' },
+    handClosed:  { x: 140, y: 160, w:  48, h:  60, label: 'handClosed\n(握り)',  color: '#ffddcc' },
+    handOpen:    { x: 200, y: 160, w:  68, h:  72, label: 'handOpen\n(開き)',    color: '#ffddcc' },
+    leg:         { x:   0, y: 340, w:  80, h: 200, label: 'leg\n(太もも)',       color: '#ffffaa' },
+    shin:        { x: 100, y: 340, w:  68, h: 190, label: 'shin\n(すね)',        color: '#ffffaa' },
+    foot:        { x: 180, y: 340, w:  56, h:  80, label: 'foot\n(足)',          color: '#cccccc' },
+    headBack:    { x:   0, y: 560, w: 110, h: 150, label: 'headBack\n(後頭部)',  color: '#dd9999' },
+    chestBack:   { x: 120, y: 560, w: 170, h: 150, label: 'chestBack\n(胸・背面)', color: '#99bb99' },
+    abdomenBack: { x: 300, y: 560, w: 150, h: 130, label: 'abdomenBack\n(腹・背面)', color: '#779977' },
+};
+
+function drawTemplate() {
+    // 背景
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    // グリッド
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < 1024; x += 64) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 1024); ctx.stroke();
+    }
+    for (let y = 0; y < 1024; y += 64) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1024, y); ctx.stroke();
+    }
+
+    // 各パーツの枠
+    for (const [key, uv] of Object.entries(uvMap)) {
+        // 塗り（半透明）
+        ctx.fillStyle = uv.color + '55';
+        ctx.fillRect(uv.x, uv.y, uv.w, uv.h);
+
+        // 枠線
+        ctx.strokeStyle = uv.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(uv.x + 1, uv.y + 1, uv.w - 2, uv.h - 2);
+
+        // 対角線（目安）
+        ctx.strokeStyle = uv.color + '44';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(uv.x, uv.y); ctx.lineTo(uv.x + uv.w, uv.y + uv.h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(uv.x + uv.w, uv.y); ctx.lineTo(uv.x, uv.y + uv.h); ctx.stroke();
+
+        // ラベルテキスト（折り返し対応）
+        const lines = uv.label.split('\n');
+        const fontSize = Math.min(14, Math.floor(uv.w / 6));
+        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        const lineH = fontSize * 1.3;
+        const totalH = lineH * lines.length;
+        const startY = uv.y + uv.h / 2 - totalH / 2 + lineH / 2;
+
+        lines.forEach((line, i) => {
+            // 影
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillText(line, uv.x + uv.w / 2 + 1, startY + i * lineH + 1);
+            // 本文
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(line, uv.x + uv.w / 2, startY + i * lineH);
+        });
+
+        // 座標表示（右下）
+        const coordText = `${uv.x},${uv.y} ${uv.w}×${uv.h}`;
+        const coordSize = Math.min(10, Math.floor(uv.w / 9));
+        ctx.font = `${coordSize}px monospace`;
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillText(coordText, uv.x + uv.w - 2, uv.y + uv.h - 2);
+        ctx.fillStyle = uv.color;
+        ctx.fillText(coordText, uv.x + uv.w - 3, uv.y + uv.h - 3);
+    }
+
+    // セクション区切り線
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 6]);
+    // 行1と行2の境界
+    ctx.beginPath(); ctx.moveTo(0, 155); ctx.lineTo(520, 155); ctx.stroke();
+    // 行2と行3の境界
+    ctx.beginPath(); ctx.moveTo(0, 320); ctx.lineTo(285, 320); ctx.stroke();
+    // 行3と行4の境界
+    ctx.beginPath(); ctx.moveTo(0, 545); ctx.lineTo(245, 545); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // セクションラベル
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText('▶ ROW 1: Head / Neck / Chest / Abdomen', 2, 2);
+    ctx.fillText('▶ ROW 2: Arm / ForeArm / Hand×2', 2, 162);
+    ctx.fillText('▶ ROW 3: Leg / Shin / Foot', 2, 342);
+    ctx.fillText('▶ ROW 4: Back parts (Head / Chest / Abdomen)', 2, 562);
+
+    // タイトル（右下）
+    ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillText('2D Pose Editor — Atlas Template 1024×1024', 1022, 1022);
+}
+
+drawTemplate();
+
+// ---- 保存ボタン ----
+document.getElementById('btn-save').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'pose_atlas_template_1024.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+});
+</script>
+</body>
+</html>
