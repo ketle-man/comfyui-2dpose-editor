@@ -6,7 +6,7 @@ Drag joints to pose the figure, then capture it as an `IMAGE` output.
 ノード内で 2D リギングフィギュアをドラッグしてポーズを編集し、`IMAGE` として出力する ComfyUI カスタムノードです。
 
 ![2D Pose Editor](https://img.shields.io/badge/ComfyUI-Custom%20Node-blue)
-![Version](https://img.shields.io/badge/version-0.2.0-green)
+![Version](https://img.shields.io/badge/version-0.4.0-green)
 
 ---
 
@@ -15,13 +15,16 @@ Drag joints to pose the figure, then capture it as an `IMAGE` output.
 - 🦴 **Full body rigging** — head, neck, chest, abdomen, arms, hands, legs, feet
 - 👁️ **Eye control** — drag the pupils to move the gaze direction
 - 🎥 **Camera control** — pan (drag background) and zoom (mouse wheel) with reset
-- 🖼️ **Texture atlas** — load a single PNG to skin all body parts via UV mapping
+- 🖼️ **Texture atlas** — load a single PNG to skin all body parts via UV mapping (L/R separated UVs)
 - 👤 **Head toggle** — switch between front face and back of head
 - 👕 **Body toggle** — switch between front and back torso
 - ✊ **Hand toggle** — switch each hand between open and closed (viewer perspective)
-- 👁️‍🗨️ **Rig visibility** — show/hide skeleton lines and control points (reflected in capture)
-- 📸 **One-click capture** — saves the current pose as a PNG image
+- 👁️‍🗨️ **Rig visibility** — show/hide skeleton overlay with stadium-shape outlines
+- 📸 **One-click capture** — saves the current pose as a PNG image (always rig-free output)
 - 🔄 **Reset pose** — return to the default pose instantly
+- 🖼 **Background compositing** — connect a background `IMAGE` to composite the pose over it
+- 📂 **Image Input Mode** — switch the node to image loader mode (P/I toggle), supports drag & drop
+- 📐 **Output size mode** — Standard / Background / Custom width×height
 
 ---
 
@@ -47,11 +50,22 @@ git clone https://github.com/ketle-man/comfyui-2dpose-editor.git
 2. Drag the **white dots** (joints) to pose the figure
 3. Drag the **black pupils** to change the eye direction
 4. Use the toggle buttons to switch head / body / hand appearance
-5. Optionally load a custom texture via **🖼 Load Texture**
-6. Click **🦴 Hide Rig** to hide the skeleton overlay before capturing
-7. Click **📸 Capture** to save the current frame
+5. Optionally load a custom texture via **🖼 Tex**
+6. Click **🦴** to toggle skeleton overlay visibility before capturing
+7. Click **📸** (Capture) to save the current frame
 8. Click **Queue Prompt** — the node outputs the pose as an `IMAGE`
-9. Click **🔄 Reset Pose** to return to the default pose
+9. Click **RP** (Reset Pose) to return to the default pose / **RC** (Reset Camera) to restore the view
+
+#### Image Input Mode
+- Click the **I** button to switch to image loader mode
+- Click **📂** to load a local image file, or **drag & drop** an image onto the node
+- The loaded image is passed directly as the node output
+- Click **P** to return to pose editor mode
+
+#### Output Size
+- **Std** — use the canvas render size (600×600)
+- **BG** — match the connected `background_image` size
+- **Custom** — specify width × height manually
 
 ### Camera controls
 
@@ -76,17 +90,20 @@ The node supports a **single sprite-sheet image** (texture atlas) for skinning a
 UV coordinates are based on a **1024×1024** reference layout, but any image size is accepted —
 UV coordinates scale automatically to match the loaded image.
 
-Use `generate_atlas_template.html` to export a labeled 1024×1024 template PNG,
-then paint your character parts inside each colored region.
+Use `generate_atlas_template.html` to export a colored 1024×1024 template PNG with
+stadium-shape outlines and direction annotations — paint your character parts over each region.
+Use `generate_sample_atlas.html` to preview how the sample figure looks with your atlas.
 
 **Atlas layout:**
 
 | Row | Parts | Y offset |
 |-----|-------|----------|
 | 1 | head, neck, chest, abdomen | 0 |
-| 2 | arm, foreArm, handClosed, handOpen | 160 |
-| 3 | leg, shin, foot | 340 |
-| 4 | headBack, chestBack, abdomenBack | 560 |
+| 2 | armL/R, foreArmL/R, handClosedL/R, handOpenL/R, footL/R | 180 |
+| 3 | legL/R, shinL/R | 370 |
+| 4 | headBack, chestBack, abdomenBack | 610 |
+
+Left (L) and Right (R) UV regions are separate, allowing asymmetric textures and correct limb mirroring.
 
 ---
 
@@ -97,7 +114,8 @@ then paint your character parts inside each colored region.
 | Node name | `PoseEditor2D` |
 | Display name | `2D Pose Editor` |
 | Category | `2D Pose` |
-| Input | `image_data` (STRING, hidden — set by the JS widget) |
+| Input (required) | `image_data` (STRING, hidden), `output_size_mode`, `custom_width`, `custom_height` |
+| Input (optional) | `background_image` (IMAGE) |
 | Output | `IMAGE` — shape `(1, H, W, C)`, float32 torch tensor |
 
 ---
@@ -118,6 +136,27 @@ then paint your character parts inside each colored region.
 ---
 
 ## Changelog
+
+### v0.4.0
+- Capture always outputs rig-free image (temporarily hides rig during capture)
+- Image Input Mode: drag & drop support for loading images
+- Rig overlay now draws stadium-shape outlines for each bone
+- Body proportion improvements: wider chest/abdomen, larger hands/feet
+- Joint gap fixes: added texOffset to arms, increased foot overlap
+- Dummy atlas colors updated to realistic skin/cloth/shoe tones
+- Atlas template generator rewritten with colored fills, stadium outlines, direction annotations, and live preview
+- Bone parameters synced across pose_editor.js, generate_sample_atlas.html, generate_atlas_template.html
+
+### v0.3.0
+- Background compositing (`background_image` optional input)
+- Image Input Mode (P/I toggle) — node acts as image loader
+- Output size mode: Standard / Background / Custom
+- Left/Right separated UVs for all limbs (armL/R, foreArmL/R, handL/R, legL/R, shinL/R, footL/R)
+- Joint gap fix: stadium-shape clip + `texOffset` overlap per bone
+- Hand/foot orientation corrected (fingers and toes face outward)
+- Compact UI: mode row, size row, parts row; canvas at 80% scale
+- Atlas layout reorganized (no overlapping UV regions)
+- `generate_sample_atlas.html` and `generate_atlas_template.html` fully updated
 
 ### v0.2.0
 - Camera pan and zoom with reset button

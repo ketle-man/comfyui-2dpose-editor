@@ -4,6 +4,7 @@ import { app } from "../../scripts/app.js";
 // ComfyUI 2D Pose Editor 拡張
 // index_v2.html のリギングロジックをノード内キャンバスに移植
 // カメラ操作・頭/体/手切り替え・テクスチャ(1枚絵UV)対応
+// 背景合成・Image Input Mode・出力サイズモード対応
 // ============================================================
 
 app.registerExtension({
@@ -17,120 +18,313 @@ app.registerExtension({
             const ret = onNodeCreated?.apply(this, arguments);
             const node = this;
 
-            // --- image_data ウィジェットを非表示にする ---
+            // --- バックエンドウィジェットを非表示にする ---
             setTimeout(() => {
-                const imgWidget = node.widgets?.find(w => w.name === "image_data");
-                if (imgWidget) {
-                    imgWidget.computeSize = () => [0, -4];
-                    imgWidget.hidden = true;
+                for (const name of ["image_data", "output_size_mode", "custom_width", "custom_height"]) {
+                    const w = node.widgets?.find(w => w.name === name);
+                    if (w) { w.computeSize = () => [0, -4]; w.hidden = true; }
                 }
                 node.setDirtyCanvas(true, true);
             }, 0);
 
+            // ---- モード状態 ----
+            let imageInputMode = false;  // true: 画像読込ノードとして動作
+            let outputSizeMode = "Standard"; // "Standard" | "Background" | "Custom"
+            let customW = 600, customH = 600;
+
+            // ---- 外部からの background_image 入力を検知して Image Input Mode を強制オフ ----
+            const origOnConnectionsChange = node.onConnectionsChange;
+            node.onConnectionsChange = function (...args) {
+                origOnConnectionsChange?.apply(this, args);
+                const hasBg = node.inputs?.some(inp => inp.name === "background_image" && inp.link != null);
+                if (hasBg && imageInputMode) {
+                    imageInputMode = false;
+                    applyMode();
+                }
+            };
+
             // --- コンテナ作成 ---
             const container = document.createElement("div");
             container.style.cssText =
-                "display:flex;flex-direction:column;align-items:center;" +
+                "display:flex;flex-direction:column;align-items:stretch;" +
                 "background:#2c2c2c;padding:6px;box-sizing:border-box;";
 
-            // --- ボタン行1: 切り替えボタン ---
-            const btnRow1 = document.createElement("div");
-            btnRow1.style.cssText = "display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;justify-content:center;";
+            // ============================================================
+            // --- 行0: P/I + 操作ボタン + Image Input 用ファイル選択 ---
+            // ============================================================
+            const modeRow = document.createElement("div");
+            modeRow.style.cssText = "display:flex;gap:4px;margin-bottom:4px;align-items:center;flex-wrap:wrap;";
 
-            const btnToggleHead  = makeButton("👤 Head: Front",  "#9c27b0");
-            const btnToggleBody  = makeButton("👕 Body: Front",  "#9c27b0");
-            const btnToggleLHand = makeButton("Left: ✊",         "#ff9800");
-            const btnToggleRHand = makeButton("Right: ✊",        "#ff9800");
+            // P / I トグルボタン（アクティブ時色付き、非アクティブはグレー）
+            const btnModeP = makeSmallButton("P", "#4a90d9", "Pose Editor");
+            const btnModeI = makeSmallButton("I", "#555",    "Image Input");
 
-            btnRow1.appendChild(btnToggleHead);
-            btnRow1.appendChild(btnToggleBody);
-            btnRow1.appendChild(btnToggleLHand);
-            btnRow1.appendChild(btnToggleRHand);
+            // Image Input 用
+            const imgFileInput = document.createElement("input");
+            imgFileInput.type = "file";
+            imgFileInput.accept = "image/*";
+            imgFileInput.style.cssText = "display:none;";
+            const imgLoadBtn  = makeSmallButton("📂", "#4a6a9a", "Load Image");
+            imgLoadBtn.style.display = "none";
+            const imgFileName = document.createElement("span");
+            imgFileName.textContent = "No file";
+            imgFileName.style.cssText = "color:#aaa;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:none;";
 
-            // --- テクスチャアップロード行 ---
-            const texRow = document.createElement("div");
-            texRow.style.cssText = "display:flex;gap:6px;margin-bottom:6px;align-items:center;";
+            // 操作ボタン（Pモード時のみ表示）
+            const captureBtn     = makeSmallButton("📸",  "#4a90d9", "Capture");
+            const toggleRigBtn   = makeSmallButton("🦴",  "#4a7a6a", "Hide Rig");
+            const resetBtn       = makeSmallButton("RP",  "#6c757d", "Reset Pose");
+            const cameraResetBtn = makeSmallButton("RC",  "#5a7a5a", "Reset Camera");
+            // RC ボタンを幅2倍に
+            cameraResetBtn.style.minWidth = "48px";
 
-            // ネイティブ input は非表示にしてカスタムボタンで英語表示
+            // 右端寄せ用スペーサー
+            const modeSpacer = document.createElement("span");
+            modeSpacer.style.cssText = "flex:1;";
+
+            modeRow.appendChild(btnModeP);
+            modeRow.appendChild(btnModeI);
+            modeRow.appendChild(imgLoadBtn);
+            modeRow.appendChild(imgFileName);
+            modeRow.appendChild(imgFileInput);
+            modeRow.appendChild(modeSpacer);
+            modeRow.appendChild(captureBtn);
+            modeRow.appendChild(toggleRigBtn);
+            modeRow.appendChild(resetBtn);
+            modeRow.appendChild(cameraResetBtn);
+
+            // ============================================================
+            // --- 行1: 出力サイズ（Pモード時のみ） ---
+            // ============================================================
+            const sizeRow = document.createElement("div");
+            sizeRow.style.cssText = "display:flex;gap:4px;margin-bottom:4px;align-items:center;flex-wrap:wrap;";
+
+            const sizeLabel = document.createElement("span");
+            sizeLabel.textContent = "Size:";
+            sizeLabel.style.cssText = "color:#aaa;font-size:10px;white-space:nowrap;";
+
+            const btnSizeStd = makeSmallButton("Std",   "#3a5a3a");
+            const btnSizeBg  = makeSmallButton("BG",    "#555");
+            const btnSizeCst = makeSmallButton("Custom","#555");
+
+            const customSizeInput = document.createElement("div");
+            customSizeInput.style.cssText = "display:none;gap:3px;align-items:center;";
+            const wInput = makeNumberInput(600, 64, 4096);
+            const hInput = makeNumberInput(600, 64, 4096);
+            const xLabel = document.createElement("span");
+            xLabel.textContent = "×";
+            xLabel.style.cssText = "color:#aaa;font-size:10px;";
+            customSizeInput.appendChild(wInput);
+            customSizeInput.appendChild(xLabel);
+            customSizeInput.appendChild(hInput);
+
+            sizeRow.appendChild(sizeLabel);
+            sizeRow.appendChild(btnSizeStd);
+            sizeRow.appendChild(btnSizeBg);
+            sizeRow.appendChild(btnSizeCst);
+            sizeRow.appendChild(customSizeInput);
+
+            // ============================================================
+            // --- 行2: ボディ切り替え + テクスチャ（Pモード時のみ） ---
+            // ============================================================
+            const partsRow = document.createElement("div");
+            partsRow.style.cssText = "display:flex;gap:4px;margin-bottom:4px;align-items:center;flex-wrap:wrap;";
+
+            const btnToggleHead  = makeSmallButton("👤F", "#9c27b0", "Head: Front");
+            const btnToggleBody  = makeSmallButton("👕F", "#9c27b0", "Body: Front");
+            const btnToggleLHand = makeSmallButton("L✊",  "#ff9800", "Left: Closed");
+            const btnToggleRHand = makeSmallButton("R✊",  "#ff9800", "Right: Closed");
+
             const texInput = document.createElement("input");
             texInput.type = "file";
             texInput.accept = "image/*";
             texInput.style.cssText = "display:none;";
-
-            const texBtn = document.createElement("button");
-            texBtn.textContent = "🖼 Load Texture";
-            texBtn.style.cssText =
-                "padding:4px 12px;background:#555;color:#fff;border:none;" +
-                "border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;";
-            texBtn.addEventListener("mouseover", () => { texBtn.style.background = "#777"; });
-            texBtn.addEventListener("mouseout",  () => { texBtn.style.background = "#555"; });
+            const texBtn = makeSmallButton("🖼 Tex", "#555", "Load Texture");
             texBtn.addEventListener("click", () => texInput.click());
-
-            const texName = document.createElement("span");
-            texName.textContent = "No file";
-            texName.style.cssText = "color:#aaa;font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-
             texInput.addEventListener("change", () => {
-                texName.textContent = texInput.files[0]?.name ?? "No file";
+                texBtn.title = texInput.files[0]?.name ?? "Load Texture";
             });
 
-            texRow.appendChild(texBtn);
-            texRow.appendChild(texName);
-            texRow.appendChild(texInput);
+            partsRow.appendChild(btnToggleHead);
+            partsRow.appendChild(btnToggleBody);
+            partsRow.appendChild(btnToggleLHand);
+            partsRow.appendChild(btnToggleRHand);
+            partsRow.appendChild(texBtn);
+            partsRow.appendChild(texInput);
 
-            // --- キャンバス作成 ---
+            // --- キャンバス（480px の80% = 384px） ---
+            const CVS_DISPLAY = 384;
             const cvs = document.createElement("canvas");
-            cvs.width = 600;
-            cvs.height = 600;
+            cvs.width = 600; cvs.height = 600;
             cvs.style.cssText =
+                `width:${CVS_DISPLAY}px;height:${CVS_DISPLAY}px;` +
                 "background:#e0e0e0;border-radius:6px;cursor:grab;" +
                 "display:block;box-shadow:0 2px 8px rgba(0,0,0,0.5);";
             cvs.addEventListener("mousedown", () => { cvs.style.cursor = "grabbing"; });
             cvs.addEventListener("mouseup",   () => { cvs.style.cursor = "grab"; });
             cvs.addEventListener("mouseleave",() => { cvs.style.cursor = "grab"; });
 
-            // --- ボタン行2: Capture / Reset / Camera Reset / Toggle Rig ---
-            const btnRow2 = document.createElement("div");
-            btnRow2.style.cssText = "display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center;";
+            // --- Image Input Mode 用プレビューキャンバス ---
+            const imgPreviewCvs = document.createElement("canvas");
+            imgPreviewCvs.width = 600; imgPreviewCvs.height = 600;
+            imgPreviewCvs.style.cssText =
+                `width:${CVS_DISPLAY}px;` +
+                "background:#333;border-radius:6px;display:none;" +
+                "box-shadow:0 2px 8px rgba(0,0,0,0.5);";
 
-            const captureBtn     = makeButton("📸 Capture",      "#4a90d9");
-            const resetBtn       = makeButton("🔄 Reset Pose",   "#6c757d");
-            const cameraResetBtn = makeButton("🎥 Reset Camera", "#5a7a5a");
-            const toggleRigBtn   = makeButton("🦴 Hide Rig",     "#4a7a6a");
-
-            btnRow2.appendChild(captureBtn);
-            btnRow2.appendChild(resetBtn);
-            btnRow2.appendChild(cameraResetBtn);
-            btnRow2.appendChild(toggleRigBtn);
-
-            container.appendChild(btnRow1);
-            container.appendChild(texRow);
+            container.appendChild(modeRow);
+            container.appendChild(sizeRow);
+            container.appendChild(partsRow);
             container.appendChild(cvs);
-            container.appendChild(btnRow2);
+            container.appendChild(imgPreviewCvs);
 
+            // ============================================================
             // --- リギングエディタ初期化 ---
+            // ============================================================
             const editor = initPoseEditor(cvs, {
-                btnToggleHead,
-                btnToggleBody,
-                btnToggleLHand,
-                btnToggleRHand,
-                texInput,
+                btnToggleHead, btnToggleBody, btnToggleLHand, btnToggleRHand, texInput,
             });
 
-            // --- リグ表示切り替えボタン ---
+            // ============================================================
+            // --- applyMode: UI の表示/非表示切り替え ---
+            // ============================================================
+            function applyMode() {
+                if (imageInputMode) {
+                    // Image Input Mode
+                    sizeRow.style.display        = "none";
+                    partsRow.style.display       = "none";
+                    cvs.style.display            = "none";
+                    captureBtn.style.display     = "none";
+                    resetBtn.style.display       = "none";
+                    cameraResetBtn.style.display = "none";
+                    toggleRigBtn.style.display   = "none";
+                    imgPreviewCvs.style.display  = "block";
+                    imgLoadBtn.style.display     = "inline-flex";
+                    imgFileName.style.display    = "inline";
+                    modeSpacer.style.display     = "none";
+                    btnModeP.style.background    = "#555";
+                    btnModeI.style.background    = "#2a6a4a";
+                } else {
+                    // Pose Editor Mode
+                    sizeRow.style.display        = "flex";
+                    partsRow.style.display       = "flex";
+                    cvs.style.display            = "block";
+                    captureBtn.style.display     = "";
+                    resetBtn.style.display       = "";
+                    cameraResetBtn.style.display = "";
+                    toggleRigBtn.style.display   = "";
+                    imgPreviewCvs.style.display  = "none";
+                    imgLoadBtn.style.display     = "none";
+                    imgFileName.style.display    = "none";
+                    modeSpacer.style.display     = "";
+                    btnModeP.style.background    = "#4a90d9";
+                    btnModeI.style.background    = "#555";
+                }
+                syncBackendWidgets();
+            }
+
+            // ============================================================
+            // --- バックエンドウィジェット同期 ---
+            // ============================================================
+            function syncBackendWidgets() {
+                const modeW = node.widgets?.find(w => w.name === "output_size_mode");
+                const wW    = node.widgets?.find(w => w.name === "custom_width");
+                const hW    = node.widgets?.find(w => w.name === "custom_height");
+                if (modeW) modeW.value = outputSizeMode;
+                if (wW)    wW.value    = customW;
+                if (hW)    hW.value    = customH;
+            }
+
+            // ============================================================
+            // --- P / I ボタン ---
+            // ============================================================
+            btnModeP.addEventListener("click", () => {
+                if (imageInputMode) { imageInputMode = false; applyMode(); }
+            });
+            btnModeI.addEventListener("click", () => {
+                const hasBg = node.inputs?.some(inp => inp.name === "background_image" && inp.link != null);
+                if (hasBg) return; // 外部入力あり時は切り替え不可
+                if (!imageInputMode) { imageInputMode = true; applyMode(); }
+            });
+
+            // --- 画像読込（Image Input Mode） ---
+            let loadedImageData = "";
+
+            function loadImageFile(file) {
+                if (!file || !file.type.startsWith("image/")) return;
+                imgFileName.textContent = file.name;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    loadedImageData = ev.target.result;
+                    const img = new Image();
+                    img.onload = () => {
+                        imgPreviewCvs.width  = img.naturalWidth;
+                        imgPreviewCvs.height = img.naturalHeight;
+                        imgPreviewCvs.style.width  = `${CVS_DISPLAY}px`;
+                        imgPreviewCvs.style.height = Math.round(CVS_DISPLAY * img.naturalHeight / img.naturalWidth) + "px";
+                        imgPreviewCvs.getContext("2d").drawImage(img, 0, 0);
+                        const imgWidget = node.widgets?.find(w => w.name === "image_data");
+                        if (imgWidget) imgWidget.value = loadedImageData;
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            imgLoadBtn.addEventListener("click", () => imgFileInput.click());
+            imgFileInput.addEventListener("change", () => loadImageFile(imgFileInput.files[0]));
+
+            // --- ドラッグ＆ドロップ（Image Input Mode 時） ---
+            container.addEventListener("dragover", (e) => {
+                if (!imageInputMode) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+                imgPreviewCvs.style.outline = "3px dashed #4a90d9";
+            });
+            container.addEventListener("dragleave", () => {
+                imgPreviewCvs.style.outline = "";
+            });
+            container.addEventListener("drop", (e) => {
+                if (!imageInputMode) return;
+                e.preventDefault();
+                e.stopPropagation();
+                imgPreviewCvs.style.outline = "";
+                const file = e.dataTransfer.files[0];
+                if (file) loadImageFile(file);
+            });
+
+            // ============================================================
+            // --- 出力サイズモード切り替え ---
+            // ============================================================
+            function setSizeMode(mode) {
+                outputSizeMode = mode;
+                btnSizeStd.style.background = mode === "Standard"   ? "#3a5a3a" : "#555";
+                btnSizeBg.style.background  = mode === "Background" ? "#3a5a3a" : "#555";
+                btnSizeCst.style.background = mode === "Custom"     ? "#3a5a3a" : "#555";
+                customSizeInput.style.display = mode === "Custom" ? "flex" : "none";
+                syncBackendWidgets();
+            }
+            btnSizeStd.addEventListener("click", () => setSizeMode("Standard"));
+            btnSizeBg.addEventListener("click",  () => setSizeMode("Background"));
+            btnSizeCst.addEventListener("click", () => setSizeMode("Custom"));
+
+            wInput.addEventListener("change", () => { customW = parseInt(wInput.value) || 600; syncBackendWidgets(); });
+            hInput.addEventListener("change", () => { customH = parseInt(hInput.value) || 600; syncBackendWidgets(); });
+
+            // ============================================================
+            // --- リグ表示切り替え ---
+            // ============================================================
             toggleRigBtn.addEventListener("click", () => {
                 const visible = editor.toggleRig();
-                toggleRigBtn.textContent = visible ? "🦴 Hide Rig" : "🦴 Show Rig";
+                toggleRigBtn.textContent  = visible ? "🦴 Hide Rig" : "🦴 Show Rig";
                 toggleRigBtn.style.background = visible ? "#4a7a6a" : "#2a5a4a";
             });
 
-            // --- キャプチャボタン ---
+            // --- キャプチャ ---
             captureBtn.addEventListener("click", () => {
-                const dataUrl = cvs.toDataURL("image/png");
+                const dataUrl = editor.captureWithoutRig();
                 const imgWidget = node.widgets?.find(w => w.name === "image_data");
-                if (imgWidget) {
-                    imgWidget.value = dataUrl;
-                }
+                if (imgWidget) imgWidget.value = dataUrl;
                 captureBtn.textContent = "✅ Captured!";
                 captureBtn.style.background = "#28a745";
                 setTimeout(() => {
@@ -139,33 +333,28 @@ app.registerExtension({
                 }, 1800);
             });
 
-            // --- リセットボタン ---
-            resetBtn.addEventListener("click", () => {
-                editor.resetPose();
-            });
+            // --- リセット ---
+            resetBtn.addEventListener("click", () => editor.resetPose());
+            cameraResetBtn.addEventListener("click", () => editor.resetCamera());
 
-            // --- カメラリセットボタン ---
-            cameraResetBtn.addEventListener("click", () => {
-                editor.resetCamera();
-            });
-
-            // --- DOM ウィジェットとして追加 ---
+            // --- DOM ウィジェット ---
             node.addDOMWidget("pose_editor_widget", "pose_editor", container, {
                 getValue() {
                     const imgWidget = node.widgets?.find(w => w.name === "image_data");
                     return imgWidget?.value ?? "";
                 },
                 setValue() {},
-                computeSize() { return [630, 740]; },
+                computeSize() { return [410, 490]; },
             });
 
-            // ノードサイズを固定（リサイズ不可）
-            const FIXED_SIZE = [650, 830];
+            // ノードサイズ固定
+            const FIXED_SIZE = [430, 560];
             node.size = [...FIXED_SIZE];
             node.resizable = false;
-            node.onResize = function () {
-                this.size = [...FIXED_SIZE];
-            };
+            node.onResize = function () { this.size = [...FIXED_SIZE]; };
+
+            // 初期同期
+            syncBackendWidgets();
 
             return ret;
         };
@@ -173,6 +362,31 @@ app.registerExtension({
 });
 
 // ---- ボタン生成ヘルパー ----
+function makeSmallButton(label, bg, title = "") {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    if (title) btn.title = title;
+    btn.style.cssText =
+        `padding:3px 8px;background:${bg};color:#fff;border:none;` +
+        "border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;" +
+        "transition:opacity 0.15s;white-space:nowrap;";
+    btn.addEventListener("mouseover", () => { btn.style.opacity = "0.8"; });
+    btn.addEventListener("mouseout",  () => { btn.style.opacity = "1"; });
+    return btn;
+}
+
+function makeNumberInput(defaultVal, min, max) {
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.value = defaultVal;
+    inp.min = min;
+    inp.max = max;
+    inp.style.cssText =
+        "width:60px;padding:3px 5px;background:#444;color:#fff;border:1px solid #666;" +
+        "border-radius:4px;font-size:11px;text-align:center;";
+    return inp;
+}
+
 function makeButton(label, bg) {
     const btn = document.createElement("button");
     btn.textContent = label;
@@ -206,24 +420,35 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
     }
 
     // ---- UV マップ定義（基準サイズ 1024×1024） ----
-    // 画像サイズが異なる場合は uvScale で自動スケーリングされる
+    // 腕・前腕・手・足・脛は L（左カラム）/ R（右カラム）で左右別
     const UV_BASE_W = 1024;
     const UV_BASE_H = 1024;
     const uvMap = {
-        head:        { x:   0, y:   0, w: 110, h: 150 },
-        neck:        { x: 120, y:   0, w:  52, h:  70 },
-        chest:       { x: 180, y:   0, w: 170, h: 150 },
-        abdomen:     { x: 360, y:   0, w: 150, h: 130 },
-        arm:         { x:   0, y: 160, w:  60, h: 160 },
-        foreArm:     { x:  80, y: 160, w:  52, h: 140 },
-        handClosed:  { x: 140, y: 160, w:  48, h:  60 },
-        handOpen:    { x: 200, y: 160, w:  68, h:  72 },
-        leg:         { x:   0, y: 340, w:  80, h: 200 },
-        shin:        { x: 100, y: 340, w:  68, h: 190 },
-        foot:        { x: 180, y: 340, w:  56, h:  80 },
-        headBack:    { x:   0, y: 560, w: 110, h: 150 },
-        chestBack:   { x: 120, y: 560, w: 170, h: 150 },
-        abdomenBack: { x: 300, y: 560, w: 150, h: 130 },
+        // ---- ROW1 (y:0) 頭・胴体 ----
+        head:         { x:   0, y:   0, w: 110, h: 170 },
+        neck:         { x: 120, y:   0, w:  52, h:  80 },
+        chest:        { x: 180, y:   0, w: 170, h: 170 },
+        abdomen:      { x: 360, y:   0, w: 150, h: 150 },
+        // ---- ROW2 (y:180) 腕・手・足 ----
+        armL:         { x:   0, y: 180, w:  60, h: 180 },
+        armR:         { x:  70, y: 180, w:  60, h: 180 },
+        foreArmL:     { x: 140, y: 180, w:  52, h: 160 },
+        foreArmR:     { x: 200, y: 180, w:  52, h: 160 },
+        handClosedL:  { x: 260, y: 180, w:  52, h:  64 },
+        handClosedR:  { x: 320, y: 180, w:  52, h:  64 },
+        handOpenL:    { x: 380, y: 180, w:  68, h:  76 },
+        handOpenR:    { x: 456, y: 180, w:  68, h:  76 },
+        footL:        { x: 540, y: 180, w:  72, h:  90 },
+        footR:        { x: 620, y: 180, w:  72, h:  90 },
+        // ---- ROW3 (y:370) 脚 ----
+        legL:         { x:   0, y: 370, w:  80, h: 220 },
+        legR:         { x:  90, y: 370, w:  80, h: 220 },
+        shinL:        { x: 180, y: 370, w:  68, h: 210 },
+        shinR:        { x: 258, y: 370, w:  68, h: 210 },
+        // ---- ROW4 (y:610) 背面 ----
+        headBack:     { x:   0, y: 610, w: 110, h: 170 },
+        chestBack:    { x: 120, y: 610, w: 170, h: 170 },
+        abdomenBack:  { x: 300, y: 610, w: 150, h: 150 },
     };
 
     // 画像サイズに応じた UV スケール係数（読み込み時に更新）
@@ -253,10 +478,15 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
         const tCtx = tc.getContext("2d");
 
         const colors = {
-            head: "#ffcccc", neck: "#ffddcc", chest: "#ccffcc", abdomen: "#aaddaa",
-            arm: "#ccccff", foreArm: "#ccccff", handClosed: "#ffeedd", handOpen: "#ffeedd",
-            leg: "#ffffcc", shin: "#ffffcc", foot: "#dddddd",
-            headBack: "#eebbbb", chestBack: "#bbddbb", abdomenBack: "#99cc99",
+            head: "#f5c8a0", neck: "#e8b890", chest: "#7fc8c8", abdomen: "#6ab8b8",
+            headBack: "#d4a878", chestBack: "#5aa8a8", abdomenBack: "#4a9898",
+            armL: "#7fc8c8", armR: "#6ab8b8",
+            foreArmL: "#9ad0a0", foreArmR: "#88c490",
+            handClosedL: "#f5c8a0", handClosedR: "#e8b890",
+            handOpenL:   "#f5c8a0", handOpenR:   "#e8b890",
+            legL: "#f5c8a0", legR: "#e8b890",
+            shinL: "#7fc8c8", shinR: "#6ab8b8",
+            footL: "#d4a878", footR: "#c89868",
         };
 
         for (const [key, uv] of Object.entries(uvMap)) {
@@ -314,8 +544,9 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
     class Bone {
         // flipTex=true : テクスチャの「上」が根元側（肘・膝など、根元から先端へ描く）
         // flipTex=false: テクスチャの「上」が先端側（頭頂・指先など、先端から根元へ描く）
+        // texOffset: テクスチャを骨方向にずらすpx（正=先端方向、負=根元方向に潜り込む）
         constructor(name, length, localAngle, uv, width, parent = null,
-                    isSlidable = false, minLen = 10, maxLen = 100, flipTex = false) {
+                    isSlidable = false, minLen = 10, maxLen = 100, flipTex = false, texOffset = 0) {
             this.name        = name;
             this.length      = length;
             this.localAngle  = localAngle;
@@ -326,6 +557,7 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
             this.minLen      = minLen;
             this.maxLen      = maxLen;
             this.flipTex     = flipTex;
+            this.texOffset   = texOffset;
             this.visible     = true;
             this.children    = [];
             if (parent) parent.children.push(this);
@@ -373,33 +605,33 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
 
         // flipTex=true → テクスチャ上辺が根元側（肘・膝側）になるよう根元から先端方向へ描画
         //              → foreArm（袖が肘側）、shin（ソックスが足首側）などに使用
-        abdomenBone = new Bone("Abdomen", 55, -Math.PI / 2, uvMap.abdomen, 75, root,        false, 10, 100, false);
-        chestBone   = new Bone("Chest",   65, 0,            uvMap.chest,   85, abdomenBone, false, 10, 100, false);
-        const neck  = new Bone("Neck",    20, 0,            uvMap.neck,    26, chestBone,   false, 10, 100, false);
-        headBone    = new Bone("Head",    50, 0,            uvMap.head,    55, neck,         false, 10, 100, false);
+        abdomenBone = new Bone("Abdomen", 65, -Math.PI / 2, uvMap.abdomen,  80, root,        false, 10, 100, false, -14);
+        chestBone   = new Bone("Chest",   65, 0,            uvMap.chest,    90, abdomenBone, false, 10, 100, false, -14);
+        const neck  = new Bone("Neck",    28, 0,            uvMap.neck,     26, chestBone,   false, 10, 100, false, -12);
+        headBone    = new Bone("Head",    58, 0,            uvMap.head,     55, neck,         false, 10, 100, false, -14);
 
         const lEyeBase  = new Bone("LeftEyeBase",  28, -0.4, null, 0, neck);
         const rEyeBase  = new Bone("RightEyeBase", 28,  0.4, null, 0, neck);
         leftEyeBone  = new Bone("LeftEye",  2, 0, null, 0, lEyeBase,  true, 0, 7);
         rightEyeBone = new Bone("RightEye", 2, 0, null, 0, rEyeBase,  true, 0, 7);
 
-        const lShoulder = new Bone("LeftShoulder",  35, -Math.PI / 2,       null,            0, chestBone,  true, 15, 80);
-        const rShoulder = new Bone("RightShoulder", 35,  Math.PI / 2,       null,            0, chestBone,  true, 15, 80);
-        const lArm      = new Bone("LeftArm",       70, -Math.PI / 2 + 0.3, uvMap.arm,      30, lShoulder,  false, 10, 100, false);
-        const lForeArm  = new Bone("LeftForeArm",   60,  0,                 uvMap.foreArm,  26, lArm,       false, 10, 100, true);
-        leftHandBone    = new Bone("LeftHand",      25,  0,                 uvMap.handClosed,24, lForeArm,   false, 10, 100, false);
-        const rArm      = new Bone("RightArm",      70,  Math.PI / 2 - 0.3, uvMap.arm,      30, rShoulder,  false, 10, 100, false);
-        const rForeArm  = new Bone("RightForeArm",  60,  0,                 uvMap.foreArm,  26, rArm,       false, 10, 100, true);
-        rightHandBone   = new Bone("RightHand",     25,  0,                 uvMap.handClosed,24, rForeArm,   false, 10, 100, false);
+        const lShoulder = new Bone("LeftShoulder",  35, -Math.PI / 2,       null,               0,  chestBone,  true, 15, 80);
+        const rShoulder = new Bone("RightShoulder", 35,  Math.PI / 2,       null,               0,  chestBone,  true, 15, 80);
+        const lArm      = new Bone("LeftArm",       55, -Math.PI / 2 + 0.3, uvMap.armL,        30,  lShoulder,  false, 10, 100, false, -10);
+        const lForeArm  = new Bone("LeftForeArm",   75,  0,                 uvMap.foreArmL,    26,  lArm,       false, 10, 100, true,  -14);
+        leftHandBone    = new Bone("LeftHand",      28,  0,                 uvMap.handClosedL, 28,  lForeArm,   false, 10, 100, true,  -12);
+        const rArm      = new Bone("RightArm",      55,  Math.PI / 2 - 0.3, uvMap.armR,        30,  rShoulder,  false, 10, 100, false, -10);
+        const rForeArm  = new Bone("RightForeArm",  75,  0,                 uvMap.foreArmR,    26,  rArm,       false, 10, 100, true,  -14);
+        rightHandBone   = new Bone("RightHand",     28,  0,                 uvMap.handClosedR, 28,  rForeArm,   false, 10, 100, true,  -12);
 
-        const lHip  = new Bone("LeftHip",   25,  Math.PI,           null,      0, root,  true, 10, 60);
-        const rHip  = new Bone("RightHip",  25,  0,                 null,      0, root,  true, 10, 60);
-        const lLeg  = new Bone("LeftLeg",   90, -Math.PI / 2 + 0.1, uvMap.leg, 40, lHip,  false, 10, 100, false);
-        const lShin = new Bone("LeftShin",  85,  0,                 uvMap.shin,34, lLeg,  false, 10, 100, true);
-        const lFoot = new Bone("LeftFoot",  30,  Math.PI / 2,       uvMap.foot,28, lShin, false, 10, 100, true);
-        const rLeg  = new Bone("RightLeg",  90,  Math.PI / 2 - 0.1, uvMap.leg, 40, rHip,  false, 10, 100, false);
-        const rShin = new Bone("RightShin", 85,  0,                 uvMap.shin,34, rLeg,  false, 10, 100, true);
-        const rFoot = new Bone("RightFoot", 30,  Math.PI / 2,       uvMap.foot,28, rShin, false, 10, 100, true);
+        const lHip  = new Bone("LeftHip",   25,  Math.PI,           null,        0,  root,  true, 10, 60);
+        const rHip  = new Bone("RightHip",  25,  0,                 null,        0,  root,  true, 10, 60);
+        const lLeg  = new Bone("LeftLeg",   72, -Math.PI / 2 + 0.1, uvMap.legL,  40, lHip,  false, 10, 100, false);
+        const lShin = new Bone("LeftShin", 103,  0,                 uvMap.shinL, 34, lLeg,  false, 10, 100, true,  -16);
+        const lFoot = new Bone("LeftFoot",  30,  Math.PI / 2,       uvMap.footL, 36, lShin, false, 10, 100, true,  -16);
+        const rLeg  = new Bone("RightLeg",  72,  Math.PI / 2 - 0.1, uvMap.legR,  40, rHip,  false, 10, 100, false);
+        const rShin = new Bone("RightShin",103,  0,                 uvMap.shinR, 34, rLeg,  false, 10, 100, true,  -16);
+        const rFoot = new Bone("RightFoot", 30,  Math.PI / 2,       uvMap.footR, 36, rShin, false, 10, 100, true,  -16);
 
         drawOrder = [
             leftHandBone, lForeArm, lArm, lShoulder,
@@ -429,21 +661,39 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
             if (!bone.visible) continue;
             if (bone.uv && atlasReady) {
                 const suv = scaledUv(bone.uv);
+                const r   = bone.width / 2;
+                const len = bone.length;
+
                 ctx.save();
+                const off = bone.texOffset ?? 0;
                 if (bone.flipTex) {
-                    // テクスチャ上辺＝根元側：根元を原点にして根元→先端方向へ描画
+                    // 根元から先端方向：負のoffsetで根元側（親の下）に潜り込む
                     ctx.translate(bone.gx, bone.gy);
                     ctx.rotate(bone.gAngle - Math.PI / 2);
+                    ctx.translate(0, off);
                 } else {
-                    // テクスチャ上辺＝先端側：先端を原点にして先端→根元方向へ描画
+                    // 先端から根元方向：正のoffsetで先端側（親の下）に潜り込む
                     ctx.translate(bone.endX, bone.endY);
                     ctx.rotate(bone.gAngle + Math.PI / 2);
+                    ctx.translate(0, -off);
                 }
+
+                // スタジアム形（長方形＋両端半円）をクリップパスとして設定
+                ctx.beginPath();
+                ctx.arc(0,   0,   r, Math.PI, 0);
+                ctx.lineTo(r, len);
+                ctx.arc(0,   len, r, 0,       Math.PI);
+                ctx.lineTo(-r, 0);
+                ctx.closePath();
+                ctx.clip();
+
+                // テクスチャを矩形で描画（クリップにより両端が丸くなる）
                 ctx.drawImage(
                     atlasImage,
                     suv.x, suv.y, suv.w, suv.h,
-                    -bone.width / 2, 0, bone.width, bone.length + 10
+                    -r, 0, bone.width, len
                 );
+
                 ctx.restore();
             } else if (bone.name.includes("Eye")) {
                 ctx.beginPath();
@@ -461,7 +711,37 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
         }
 
         if (showRig) {
-            // B. 骨格ライン
+            // B. スタジアム形アウトライン（各ボーンの形状を可視化）
+            for (const bone of drawOrder) {
+                if (!bone.visible || !bone.uv) continue;
+                const r   = bone.width / 2;
+                const len = bone.length;
+                const off = bone.texOffset ?? 0;
+
+                ctx.save();
+                if (bone.flipTex) {
+                    ctx.translate(bone.gx, bone.gy);
+                    ctx.rotate(bone.gAngle - Math.PI / 2);
+                    ctx.translate(0, off);
+                } else {
+                    ctx.translate(bone.endX, bone.endY);
+                    ctx.rotate(bone.gAngle + Math.PI / 2);
+                    ctx.translate(0, -off);
+                }
+
+                ctx.beginPath();
+                ctx.arc(0,   0,   r, Math.PI, 0);
+                ctx.lineTo(r, len);
+                ctx.arc(0,   len, r, 0,       Math.PI);
+                ctx.lineTo(-r, 0);
+                ctx.closePath();
+                ctx.strokeStyle = "rgba(60,60,60,0.7)";
+                ctx.lineWidth = 1.5 / camera.zoom;
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // C. 骨格ライン
             ctx.lineWidth = 2 / camera.zoom;
             for (const bone of allBones) {
                 if (!bone.visible) continue;
@@ -480,7 +760,7 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
             }
             ctx.setLineDash([]);
 
-            // C. 関節ポイント
+            // D. 関節ポイント
             for (const bone of allBones) {
                 if (!bone.visible) continue;
                 if (bone.name === "Root" || bone.name.includes("Eye") || bone.name.includes("EyeBase")) continue;
@@ -587,12 +867,14 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
             headBone.uv = uvMap.headBack;
             leftEyeBone.visible = false;
             rightEyeBone.visible = false;
-            btnToggleHead.textContent = "👤 Head: Back";
+            btnToggleHead.textContent = "👤B";
+            btnToggleHead.title = "Head: Back";
         } else {
             headBone.uv = uvMap.head;
             leftEyeBone.visible = true;
             rightEyeBone.visible = true;
-            btnToggleHead.textContent = "👤 Head: Front";
+            btnToggleHead.textContent = "👤F";
+            btnToggleHead.title = "Head: Front";
         }
         draw();
     });
@@ -603,11 +885,13 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
         if (isBodyBack) {
             chestBone.uv   = uvMap.chestBack;
             abdomenBone.uv = uvMap.abdomenBack;
-            btnToggleBody.textContent = "👕 Body: Back";
+            btnToggleBody.textContent = "👕B";
+            btnToggleBody.title = "Body: Back";
         } else {
             chestBone.uv   = uvMap.chest;
             abdomenBone.uv = uvMap.abdomen;
-            btnToggleBody.textContent = "👕 Body: Front";
+            btnToggleBody.textContent = "👕F";
+            btnToggleBody.title = "Body: Front";
         }
         draw();
     });
@@ -618,11 +902,13 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
     btnToggleLHand.addEventListener("click", () => {
         isLeftOpen = !isLeftOpen;
         if (isLeftOpen) {
-            rightHandBone.uv = uvMap.handOpen; rightHandBone.width = 34; rightHandBone.length = 32;
-            btnToggleLHand.textContent = "Left: 🖐";
+            rightHandBone.uv = uvMap.handOpenR; rightHandBone.width = 36; rightHandBone.length = 34;
+            btnToggleLHand.textContent = "L🖐";
+            btnToggleLHand.title = "Left: Open";
         } else {
-            rightHandBone.uv = uvMap.handClosed; rightHandBone.width = 24; rightHandBone.length = 25;
-            btnToggleLHand.textContent = "Left: ✊";
+            rightHandBone.uv = uvMap.handClosedR; rightHandBone.width = 28; rightHandBone.length = 28;
+            btnToggleLHand.textContent = "L✊";
+            btnToggleLHand.title = "Left: Closed";
         }
         root.update(ROOT_X, ROOT_Y, ROOT_A);
         draw();
@@ -631,11 +917,13 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
     btnToggleRHand.addEventListener("click", () => {
         isRightOpen = !isRightOpen;
         if (isRightOpen) {
-            leftHandBone.uv = uvMap.handOpen; leftHandBone.width = 34; leftHandBone.length = 32;
-            btnToggleRHand.textContent = "Right: 🖐";
+            leftHandBone.uv = uvMap.handOpenL; leftHandBone.width = 36; leftHandBone.length = 34;
+            btnToggleRHand.textContent = "R🖐";
+            btnToggleRHand.title = "Right: Open";
         } else {
-            leftHandBone.uv = uvMap.handClosed; leftHandBone.width = 24; leftHandBone.length = 25;
-            btnToggleRHand.textContent = "Right: ✊";
+            leftHandBone.uv = uvMap.handClosedL; leftHandBone.width = 28; leftHandBone.length = 28;
+            btnToggleRHand.textContent = "R✊";
+            btnToggleRHand.title = "Right: Closed";
         }
         root.update(ROOT_X, ROOT_Y, ROOT_A);
         draw();
@@ -647,10 +935,10 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
         isBodyBack = false;
         isLeftOpen = false;
         isRightOpen = false;
-        btnToggleHead.textContent  = "👤 Head: Front";
-        btnToggleBody.textContent  = "👕 Body: Front";
-        btnToggleLHand.textContent = "Left: ✊";
-        btnToggleRHand.textContent = "Right: ✊";
+        btnToggleHead.textContent  = "👤F"; btnToggleHead.title  = "Head: Front";
+        btnToggleBody.textContent  = "👕F"; btnToggleBody.title  = "Body: Front";
+        btnToggleLHand.textContent = "L✊";  btnToggleLHand.title = "Left: Closed";
+        btnToggleRHand.textContent = "R✊";  btnToggleRHand.title = "Right: Closed";
         buildRig();
         root.update(ROOT_X, ROOT_Y, ROOT_A);
         draw();
@@ -671,6 +959,17 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
         return showRig;
     }
 
+    // ---- リグ非表示でキャプチャ（dataURL を返す） ----
+    function captureWithoutRig() {
+        const wasShowRig = showRig;
+        showRig = false;
+        draw();
+        const dataUrl = canvas.toDataURL("image/png");
+        showRig = wasShowRig;
+        draw();
+        return dataUrl;
+    }
+
     // ---- 初期化 ----
     buildRig();
     // アトラスが既にロード済みなら即描画
@@ -685,5 +984,5 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
         });
     }
 
-    return { resetPose, resetCamera, toggleRig };
+    return { resetPose, resetCamera, toggleRig, captureWithoutRig };
 }

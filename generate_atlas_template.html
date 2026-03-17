@@ -5,7 +5,8 @@
 <title>Atlas Template Generator 1024x1024</title>
 <style>
   body { background:#1a1a1a; color:#eee; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px; gap:14px; }
-  canvas { border:2px solid #555; }
+  .row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+  canvas { border:2px solid #555; border-radius:6px; }
   button { padding:10px 28px; font-size:15px; font-weight:bold; background:#4CAF50; color:#fff; border:none; border-radius:6px; cursor:pointer; }
   button:hover { background:#45a049; }
   p { color:#aaa; font-size:13px; text-align:center; line-height:1.8; max-width:700px; }
@@ -17,58 +18,154 @@
 <body>
 <h2>2D Pose Editor — Atlas Template (1024×1024)</h2>
 
-<canvas id="c" width="1024" height="1024"></canvas>
-
-<button id="btn-save">💾 PNG として保存</button>
+<div class="row">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+    <canvas id="c" width="1024" height="1024" style="width:512px;height:512px;"></canvas>
+    <button id="btn-save">💾 PNG として保存</button>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+    <canvas id="preview" width="600" height="600"></canvas>
+    <span style="color:#888;font-size:11px;">プレビュー（実際の配置確認）</span>
+  </div>
+</div>
 
 <p>
-  各パーツは <strong>ガイド枠（色付き）</strong> と <strong>ラベル</strong> が描かれています。<br>
+  各パーツは <strong>ダミーテクスチャ（色付き）</strong> と <strong>スタジアム形アウトライン</strong> が描かれています。<br>
   このPNGをペイントソフト等で開き、各枠の中にキャラクターのパーツを描いてください。<br>
   完成したら、ノードの <strong>🖼 Texture</strong> ボタンで読み込みます。
 </p>
 
 <table>
-<tr><th>パーツ名</th><th>UV(x, y, w, h) ※スケール×2</th><th>用途</th></tr>
-<tr><td>head</td><td>0, 0, 110, 150</td><td>正面・頭部</td></tr>
-<tr><td>neck</td><td>120, 0, 52, 70</td><td>首</td></tr>
-<tr><td>chest</td><td>180, 0, 170, 150</td><td>胸・上半身（正面）</td></tr>
-<tr><td>abdomen</td><td>360, 0, 150, 130</td><td>腹部（正面）</td></tr>
-<tr><td>arm</td><td>0, 160, 60, 160</td><td>上腕（左右共通）</td></tr>
-<tr><td>foreArm</td><td>80, 160, 52, 140</td><td>前腕（左右共通）</td></tr>
-<tr><td>handClosed</td><td>140, 160, 48, 60</td><td>握り手（左右共通）</td></tr>
-<tr><td>handOpen</td><td>200, 160, 68, 72</td><td>開き手（左右共通）</td></tr>
-<tr><td>leg</td><td>0, 340, 80, 200</td><td>太もも（左右共通）</td></tr>
-<tr><td>shin</td><td>100, 340, 68, 190</td><td>すね（左右共通）</td></tr>
-<tr><td>foot</td><td>180, 340, 56, 80</td><td>足（左右共通）</td></tr>
-<tr><td>headBack</td><td>0, 560, 110, 150</td><td>後頭部</td></tr>
-<tr><td>chestBack</td><td>120, 560, 170, 150</td><td>胸・上半身（背面）</td></tr>
-<tr><td>abdomenBack</td><td>300, 560, 150, 130</td><td>腹部（背面）</td></tr>
+<tr><th>パーツ名</th><th>UV (x, y, w, h)</th><th>用途</th><th>描画方向</th></tr>
+<tr><td>head</td><td>0, 0, 110, 170</td><td>正面・頭部</td><td>上=頭頂</td></tr>
+<tr><td>neck</td><td>120, 0, 52, 80</td><td>首</td><td>上=顎側</td></tr>
+<tr><td>chest</td><td>180, 0, 170, 170</td><td>胸・上半身（正面）</td><td>上=首側</td></tr>
+<tr><td>abdomen</td><td>360, 0, 150, 150</td><td>腹部（正面）</td><td>上=胸側</td></tr>
+<tr><td>armL / armR</td><td>0,180 / 70,180</td><td>上腕</td><td>上=肩側</td></tr>
+<tr><td>foreArmL / foreArmR</td><td>140,180 / 200,180</td><td>前腕</td><td>上=肘側 (flipTex)</td></tr>
+<tr><td>handClosedL / R</td><td>260,180 / 320,180</td><td>握り手</td><td>上=手首側 (flipTex)</td></tr>
+<tr><td>handOpenL / R</td><td>380,180 / 456,180</td><td>開き手</td><td>上=手首側 (flipTex)</td></tr>
+<tr><td>footL</td><td>540, 180, 72, 90</td><td>足（左）</td><td>つま先→右</td></tr>
+<tr><td>footR</td><td>620, 180, 72, 90</td><td>足（右）</td><td>つま先→左</td></tr>
+<tr><td>legL / legR</td><td>0,370 / 90,370</td><td>太もも</td><td>上=腰側</td></tr>
+<tr><td>shinL / shinR</td><td>180,370 / 258,370</td><td>すね</td><td>上=膝側 (flipTex)</td></tr>
+<tr><td>headBack</td><td>0, 610, 110, 170</td><td>後頭部</td><td>上=頭頂</td></tr>
+<tr><td>chestBack</td><td>120, 610, 170, 170</td><td>胸・背面</td><td>上=首側</td></tr>
+<tr><td>abdomenBack</td><td>300, 610, 150, 150</td><td>腹部・背面</td><td>上=胸側</td></tr>
 </table>
 
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-// ---- UV定義（1024x1024用 = 元の2倍スケール） ----
+// ============================================================
+// UV定義（pose_editor.js と完全同期）
+// ============================================================
 const uvMap = {
-    head:        { x:   0, y:   0, w: 110, h: 150, label: 'head\n(正面・顔)',    color: '#ffaaaa' },
-    neck:        { x: 120, y:   0, w:  52, h:  70, label: 'neck\n(首)',          color: '#ffccaa' },
-    chest:       { x: 180, y:   0, w: 170, h: 150, label: 'chest\n(胸・正面)',   color: '#aaffaa' },
-    abdomen:     { x: 360, y:   0, w: 150, h: 130, label: 'abdomen\n(腹・正面)', color: '#88cc88' },
-    arm:         { x:   0, y: 160, w:  60, h: 160, label: 'arm\n(上腕)',         color: '#aaaaff' },
-    foreArm:     { x:  80, y: 160, w:  52, h: 140, label: 'foreArm\n(前腕)',     color: '#aaaaff' },
-    handClosed:  { x: 140, y: 160, w:  48, h:  60, label: 'handClosed\n(握り)',  color: '#ffddcc' },
-    handOpen:    { x: 200, y: 160, w:  68, h:  72, label: 'handOpen\n(開き)',    color: '#ffddcc' },
-    leg:         { x:   0, y: 340, w:  80, h: 200, label: 'leg\n(太もも)',       color: '#ffffaa' },
-    shin:        { x: 100, y: 340, w:  68, h: 190, label: 'shin\n(すね)',        color: '#ffffaa' },
-    foot:        { x: 180, y: 340, w:  56, h:  80, label: 'foot\n(足)',          color: '#cccccc' },
-    headBack:    { x:   0, y: 560, w: 110, h: 150, label: 'headBack\n(後頭部)',  color: '#dd9999' },
-    chestBack:   { x: 120, y: 560, w: 170, h: 150, label: 'chestBack\n(胸・背面)', color: '#99bb99' },
-    abdomenBack: { x: 300, y: 560, w: 150, h: 130, label: 'abdomenBack\n(腹・背面)', color: '#779977' },
+    head:         { x:   0, y:   0, w: 110, h: 170 },
+    neck:         { x: 120, y:   0, w:  52, h:  80 },
+    chest:        { x: 180, y:   0, w: 170, h: 170 },
+    abdomen:      { x: 360, y:   0, w: 150, h: 150 },
+    armL:         { x:   0, y: 180, w:  60, h: 180 },
+    armR:         { x:  70, y: 180, w:  60, h: 180 },
+    foreArmL:     { x: 140, y: 180, w:  52, h: 160 },
+    foreArmR:     { x: 200, y: 180, w:  52, h: 160 },
+    handClosedL:  { x: 260, y: 180, w:  52, h:  64 },
+    handClosedR:  { x: 320, y: 180, w:  52, h:  64 },
+    handOpenL:    { x: 380, y: 180, w:  68, h:  76 },
+    handOpenR:    { x: 456, y: 180, w:  68, h:  76 },
+    footL:        { x: 540, y: 180, w:  72, h:  90 },
+    footR:        { x: 620, y: 180, w:  72, h:  90 },
+    legL:         { x:   0, y: 370, w:  80, h: 220 },
+    legR:         { x:  90, y: 370, w:  80, h: 220 },
+    shinL:        { x: 180, y: 370, w:  68, h: 210 },
+    shinR:        { x: 258, y: 370, w:  68, h: 210 },
+    headBack:     { x:   0, y: 610, w: 110, h: 170 },
+    chestBack:    { x: 120, y: 610, w: 170, h: 170 },
+    abdomenBack:  { x: 300, y: 610, w: 150, h: 150 },
 };
 
+// ============================================================
+// ダミーアトラスと同じ配色（pose_editor.js と同期）
+// ============================================================
+const colors = {
+    head: '#f5c8a0', neck: '#e8b890', chest: '#7fc8c8', abdomen: '#6ab8b8',
+    headBack: '#d4a878', chestBack: '#5aa8a8', abdomenBack: '#4a9898',
+    armL: '#7fc8c8', armR: '#6ab8b8',
+    foreArmL: '#9ad0a0', foreArmR: '#88c490',
+    handClosedL: '#f5c8a0', handClosedR: '#e8b890',
+    handOpenL:   '#f5c8a0', handOpenR:   '#e8b890',
+    legL: '#f5c8a0', legR: '#e8b890',
+    shinL: '#7fc8c8', shinR: '#6ab8b8',
+    footL: '#d4a878', footR: '#c89868',
+};
+
+// ============================================================
+// ボーン定義（スタジアム形アウトライン描画用、pose_editor.js と同期）
+// boneWidth: パーツ描画幅, flipTex: テクスチャ方向
+// ============================================================
+const boneInfo = {
+    head:         { width: 55, flipTex: false },
+    neck:         { width: 26, flipTex: false },
+    chest:        { width: 90, flipTex: false },
+    abdomen:      { width: 80, flipTex: false },
+    headBack:     { width: 55, flipTex: false },
+    chestBack:    { width: 90, flipTex: false },
+    abdomenBack:  { width: 80, flipTex: false },
+    armL:         { width: 30, flipTex: false },
+    armR:         { width: 30, flipTex: false },
+    foreArmL:     { width: 26, flipTex: true  },
+    foreArmR:     { width: 26, flipTex: true  },
+    handClosedL:  { width: 28, flipTex: true  },
+    handClosedR:  { width: 28, flipTex: true  },
+    handOpenL:    { width: 36, flipTex: true  },
+    handOpenR:    { width: 36, flipTex: true  },
+    legL:         { width: 40, flipTex: false },
+    legR:         { width: 40, flipTex: false },
+    shinL:        { width: 34, flipTex: true  },
+    shinR:        { width: 34, flipTex: true  },
+    footL:        { width: 36, flipTex: true  },
+    footR:        { width: 36, flipTex: true  },
+};
+
+// ラベル定義
+const labels = {
+    head: 'head\n(顔・正面)', neck: 'neck\n(首)',
+    chest: 'chest\n(胸・正面)', abdomen: 'abdomen\n(腹・正面)',
+    armL: 'armL\n(上腕・左)', armR: 'armR\n(上腕・右)',
+    foreArmL: 'foreArmL\n(前腕・左)', foreArmR: 'foreArmR\n(前腕・右)',
+    handClosedL: 'handCL\n(握り・左)', handClosedR: 'handCR\n(握り・右)',
+    handOpenL: 'handOL\n(開き・左)', handOpenR: 'handOR\n(開き・右)',
+    footL: 'footL\n(足・左)', footR: 'footR\n(足・右)',
+    legL: 'legL\n(太もも・左)', legR: 'legR\n(太もも・右)',
+    shinL: 'shinL\n(すね・左)', shinR: 'shinR\n(すね・右)',
+    headBack: 'headBack\n(後頭部)',
+    chestBack: 'chestBack\n(胸・背面)', abdomenBack: 'abdomenBack\n(腹・背面)',
+};
+
+const footNotes = {
+    footL: '← heel  toe →',
+    footR: '← toe  heel →',
+};
+
+// flipTex の方向注釈
+const dirNotes = {
+    foreArmL: '↑肘', foreArmR: '↑肘',
+    handClosedL: '↑手首', handClosedR: '↑手首',
+    handOpenL: '↑手首', handOpenR: '↑手首',
+    shinL: '↑膝', shinR: '↑膝',
+    footL: '↑足首', footR: '↑足首',
+    head: '↑頭頂', headBack: '↑頭頂',
+    neck: '↑顎', chest: '↑首', chestBack: '↑首',
+    abdomen: '↑胸', abdomenBack: '↑胸',
+    armL: '↑肩', armR: '↑肩',
+    legL: '↑腰', legR: '↑腰',
+};
+
+// ============================================================
+// 描画
+// ============================================================
 function drawTemplate() {
-    // 背景
     ctx.fillStyle = '#2a2a2a';
     ctx.fillRect(0, 0, 1024, 1024);
 
@@ -82,65 +179,110 @@ function drawTemplate() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1024, y); ctx.stroke();
     }
 
-    // 各パーツの枠
+    // 各パーツ
     for (const [key, uv] of Object.entries(uvMap)) {
-        // 塗り（半透明）
-        ctx.fillStyle = uv.color + '55';
-        ctx.fillRect(uv.x, uv.y, uv.w, uv.h);
+        const color = colors[key] || '#cccccc';
+        const bi = boneInfo[key];
 
-        // 枠線
-        ctx.strokeStyle = uv.color;
+        // ベース塗り（角丸矩形）
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(uv.x, uv.y, uv.w, uv.h, 10);
+        else ctx.rect(uv.x, uv.y, uv.w, uv.h);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#333';
         ctx.lineWidth = 2;
-        ctx.strokeRect(uv.x + 1, uv.y + 1, uv.w - 2, uv.h - 2);
+        ctx.stroke();
 
-        // 対角線（目安）
-        ctx.strokeStyle = uv.color + '44';
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(uv.x, uv.y); ctx.lineTo(uv.x + uv.w, uv.y + uv.h); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(uv.x + uv.w, uv.y); ctx.lineTo(uv.x, uv.y + uv.h); ctx.stroke();
+        // スタジアム形アウトライン（実際のボーン形状）
+        if (bi) {
+            const r = bi.width / 2;
+            // UV矩形の中央にスタジアム形を描画
+            const cx = uv.x + uv.w / 2;
+            const stadLen = uv.h - bi.width; // 半円分を引いた長さ
+            if (stadLen > 0) {
+                ctx.save();
+                ctx.translate(cx, uv.y + r);
+                ctx.beginPath();
+                ctx.arc(0, 0, r, Math.PI, 0);
+                ctx.lineTo(r, stadLen);
+                ctx.arc(0, stadLen, r, 0, Math.PI);
+                ctx.lineTo(-r, 0);
+                ctx.closePath();
+                ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                // 中心線
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, stadLen);
+                ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+        }
 
-        // ラベルテキスト（折り返し対応）
-        const lines = uv.label.split('\n');
-        const fontSize = Math.min(14, Math.floor(uv.w / 6));
+        // 方向注釈（上端）
+        if (dirNotes[key]) {
+            ctx.font = 'bold 9px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillText(dirNotes[key], uv.x + uv.w / 2 + 1, uv.y + 3);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(dirNotes[key], uv.x + uv.w / 2, uv.y + 2);
+        }
+
+        // ラベルテキスト
+        const labelText = labels[key] || key;
+        const lines = labelText.split('\n');
+        const fontSize = Math.min(13, Math.floor(uv.w / 6));
         ctx.font = `bold ${fontSize}px Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-
         const lineH = fontSize * 1.3;
         const totalH = lineH * lines.length;
         const startY = uv.y + uv.h / 2 - totalH / 2 + lineH / 2;
-
         lines.forEach((line, i) => {
-            // 影
-            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
             ctx.fillText(line, uv.x + uv.w / 2 + 1, startY + i * lineH + 1);
-            // 本文
             ctx.fillStyle = '#ffffff';
             ctx.fillText(line, uv.x + uv.w / 2, startY + i * lineH);
         });
 
+        // foot 向き注釈
+        if (footNotes[key]) {
+            ctx.font = '8px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillText(footNotes[key], uv.x + uv.w / 2 + 1, uv.y + uv.h - 3);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(footNotes[key], uv.x + uv.w / 2, uv.y + uv.h - 4);
+        }
+
         // 座標表示（右下）
         const coordText = `${uv.x},${uv.y} ${uv.w}×${uv.h}`;
-        const coordSize = Math.min(10, Math.floor(uv.w / 9));
+        const coordSize = Math.min(9, Math.floor(uv.w / 9));
         ctx.font = `${coordSize}px monospace`;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'bottom';
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillText(coordText, uv.x + uv.w - 2, uv.y + uv.h - 2);
-        ctx.fillStyle = uv.color;
-        ctx.fillText(coordText, uv.x + uv.w - 3, uv.y + uv.h - 3);
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillText(coordText, uv.x + uv.w - 2, uv.y + uv.h - (footNotes[key] ? 14 : 2));
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillText(coordText, uv.x + uv.w - 3, uv.y + uv.h - (footNotes[key] ? 15 : 3));
     }
 
     // セクション区切り線
     ctx.strokeStyle = 'rgba(255,255,255,0.2)';
     ctx.lineWidth = 1;
     ctx.setLineDash([6, 6]);
-    // 行1と行2の境界
-    ctx.beginPath(); ctx.moveTo(0, 155); ctx.lineTo(520, 155); ctx.stroke();
-    // 行2と行3の境界
-    ctx.beginPath(); ctx.moveTo(0, 320); ctx.lineTo(285, 320); ctx.stroke();
-    // 行3と行4の境界
-    ctx.beginPath(); ctx.moveTo(0, 545); ctx.lineTo(245, 545); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 175); ctx.lineTo(1024, 175); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 365); ctx.lineTo(1024, 365); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 605); ctx.lineTo(1024, 605); ctx.stroke();
     ctx.setLineDash([]);
 
     // セクションラベル
@@ -148,12 +290,12 @@ function drawTemplate() {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText('▶ ROW 1: Head / Neck / Chest / Abdomen', 2, 2);
-    ctx.fillText('▶ ROW 2: Arm / ForeArm / Hand×2', 2, 162);
-    ctx.fillText('▶ ROW 3: Leg / Shin / Foot', 2, 342);
-    ctx.fillText('▶ ROW 4: Back parts (Head / Chest / Abdomen)', 2, 562);
+    ctx.fillText('ROW 1 (y:0): Head / Neck / Chest / Abdomen', 2, 2);
+    ctx.fillText('ROW 2 (y:180): ArmL/R / ForeArmL/R / HandL/R / FootL/R', 2, 182);
+    ctx.fillText('ROW 3 (y:370): LegL/R / ShinL/R', 2, 372);
+    ctx.fillText('ROW 4 (y:610): HeadBack / ChestBack / AbdomenBack', 2, 612);
 
-    // タイトル（右下）
+    // タイトル
     ctx.font = 'bold 13px Arial';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
@@ -163,7 +305,157 @@ function drawTemplate() {
 
 drawTemplate();
 
-// ---- 保存ボタン ----
+// ============================================================
+// プレビュー（pose_editor.js と同じ Bone 定義で配置確認）
+// ============================================================
+const previewCanvas = document.getElementById('preview');
+const pc = previewCanvas.getContext('2d');
+const PW = previewCanvas.width, PH = previewCanvas.height;
+const UV_BASE_W = 1024, UV_BASE_H = 1024;
+const scaleX = canvas.width / UV_BASE_W;
+const scaleY = canvas.height / UV_BASE_H;
+
+function scaledUv(uv) {
+    return { x:uv.x*scaleX, y:uv.y*scaleY, w:uv.w*scaleX, h:uv.h*scaleY };
+}
+
+class Bone {
+    constructor(name, length, localAngle, uv, width, parent=null,
+                isSlidable=false, minLen=10, maxLen=100, flipTex=false, texOffset=0) {
+        this.name=name; this.length=length; this.localAngle=localAngle;
+        this.uv=uv; this.width=width; this.parent=parent;
+        this.flipTex=flipTex; this.texOffset=texOffset;
+        this.visible=true; this.children=[];
+        if(parent) parent.children.push(this);
+        this.gx=0; this.gy=0; this.gAngle=0; this.endX=0; this.endY=0;
+    }
+    update(px, py, pa) {
+        this.gx=px; this.gy=py; this.gAngle=pa+this.localAngle;
+        this.endX=px+Math.cos(this.gAngle)*this.length;
+        this.endY=py+Math.sin(this.gAngle)*this.length;
+        for(const c of this.children) c.update(this.endX, this.endY, this.gAngle);
+    }
+}
+
+const ROOT_X=PW/2, ROOT_Y=PH*0.533, ROOT_A=0;
+const root      = new Bone("Root",0,0,null,0);
+const abdomen   = new Bone("Abdomen", 65,-Math.PI/2, uvMap.abdomen,  80,root,        false,10,100,false,-14);
+const chest     = new Bone("Chest",   65,0,           uvMap.chest,    90,abdomen,     false,10,100,false,-14);
+const neck      = new Bone("Neck",    28,0,            uvMap.neck,     26,chest,       false,10,100,false,-12);
+const head      = new Bone("Head",    58,0,            uvMap.head,     55,neck,        false,10,100,false,-14);
+const lEyeBase  = new Bone("LeftEyeBase", 28,-0.4,null,0,neck);
+const rEyeBase  = new Bone("RightEyeBase",28, 0.4,null,0,neck);
+const lEye      = new Bone("LeftEye", 2,0,null,0,lEyeBase,true,0,7);
+const rEye      = new Bone("RightEye",2,0,null,0,rEyeBase,true,0,7);
+const lShoulder = new Bone("LeftShoulder",  35,-Math.PI/2,      null,               0, chest,     true,15,80);
+const rShoulder = new Bone("RightShoulder", 35, Math.PI/2,      null,               0, chest,     true,15,80);
+const lArm      = new Bone("LeftArm",       55,-Math.PI/2+0.3,  uvMap.armL,        30, lShoulder, false,10,100,false,-10);
+const lForeArm  = new Bone("LeftForeArm",   75,0,               uvMap.foreArmL,    26, lArm,      false,10,100,true, -14);
+const lHand     = new Bone("LeftHand",      28,0,               uvMap.handClosedL, 28, lForeArm,  false,10,100,true, -12);
+const rArm      = new Bone("RightArm",      55, Math.PI/2-0.3,  uvMap.armR,        30, rShoulder, false,10,100,false,-10);
+const rForeArm  = new Bone("RightForeArm",  75,0,               uvMap.foreArmR,    26, rArm,      false,10,100,true, -14);
+const rHand     = new Bone("RightHand",     28,0,               uvMap.handClosedR, 28, rForeArm,  false,10,100,true, -12);
+const lHip      = new Bone("LeftHip",   25, Math.PI,          null,        0,root,  true,10,60);
+const rHip      = new Bone("RightHip",  25, 0,                null,        0,root,  true,10,60);
+const lLeg      = new Bone("LeftLeg",   72,-Math.PI/2+0.1,    uvMap.legL,  40,lHip, false,10,100,false);
+const lShin     = new Bone("LeftShin", 103,0,                  uvMap.shinL, 34,lLeg, false,10,100,true, -16);
+const lFoot     = new Bone("LeftFoot",  30, Math.PI/2,         uvMap.footL, 36,lShin,false,10,100,true, -16);
+const rLeg      = new Bone("RightLeg",  72, Math.PI/2-0.1,    uvMap.legR,  40,rHip, false,10,100,false);
+const rShin     = new Bone("RightShin",103,0,                  uvMap.shinR, 34,rLeg, false,10,100,true, -16);
+const rFoot     = new Bone("RightFoot", 30, Math.PI/2,         uvMap.footR, 36,rShin,false,10,100,true, -16);
+
+const drawOrder = [
+    lHand, lForeArm, lArm, lShoulder,
+    lFoot, lShin, lLeg, lHip,
+    abdomen, chest, neck, head,
+    lEye, rEye,
+    rFoot, rShin, rLeg, rHip,
+    rHand, rForeArm, rArm, rShoulder,
+];
+
+root.update(ROOT_X, ROOT_Y, ROOT_A);
+
+const atlasImg = new Image();
+atlasImg.onload = function() {
+    pc.clearRect(0,0,PW,PH);
+    pc.fillStyle='#3a3a3a'; pc.fillRect(0,0,PW,PH);
+
+    // テクスチャ描画
+    for(const bone of drawOrder) {
+        if(!bone.visible || !bone.uv) continue;
+        const suv = scaledUv(bone.uv);
+        const r   = bone.width / 2;
+        const len = bone.length;
+        const off = bone.texOffset ?? 0;
+
+        pc.save();
+        if(bone.flipTex) {
+            pc.translate(bone.gx, bone.gy);
+            pc.rotate(bone.gAngle - Math.PI/2);
+            pc.translate(0, off);
+        } else {
+            pc.translate(bone.endX, bone.endY);
+            pc.rotate(bone.gAngle + Math.PI/2);
+            pc.translate(0, -off);
+        }
+        pc.beginPath();
+        pc.arc(0,   0,   r, Math.PI, 0);
+        pc.lineTo(r, len);
+        pc.arc(0,   len, r, 0,       Math.PI);
+        pc.lineTo(-r, 0);
+        pc.closePath();
+        pc.clip();
+        pc.drawImage(atlasImg, suv.x, suv.y, suv.w, suv.h, -r, 0, bone.width, len);
+        pc.restore();
+    }
+
+    // アウトライン描画
+    for(const bone of drawOrder) {
+        if(!bone.visible || !bone.uv) continue;
+        const r   = bone.width / 2;
+        const len = bone.length;
+        const off = bone.texOffset ?? 0;
+
+        pc.save();
+        if(bone.flipTex) {
+            pc.translate(bone.gx, bone.gy);
+            pc.rotate(bone.gAngle - Math.PI/2);
+            pc.translate(0, off);
+        } else {
+            pc.translate(bone.endX, bone.endY);
+            pc.rotate(bone.gAngle + Math.PI/2);
+            pc.translate(0, -off);
+        }
+        pc.beginPath();
+        pc.arc(0,   0,   r, Math.PI, 0);
+        pc.lineTo(r, len);
+        pc.arc(0,   len, r, 0,       Math.PI);
+        pc.lineTo(-r, 0);
+        pc.closePath();
+        pc.strokeStyle = 'rgba(60,60,60,0.7)';
+        pc.lineWidth = 1.5;
+        pc.stroke();
+        pc.restore();
+    }
+
+    // 関節ドット
+    for(const bone of drawOrder) {
+        if(!bone.visible) continue;
+        if(bone.name === 'Root' || bone.name.includes('Eye') || bone.name.includes('EyeBase') || bone.name.includes('Shoulder') || bone.name.includes('Hip')) continue;
+        pc.beginPath();
+        pc.arc(bone.endX, bone.endY, 4, 0, Math.PI*2);
+        pc.fillStyle = 'rgba(255,255,255,0.85)';
+        pc.fill();
+        pc.strokeStyle = 'rgba(80,80,80,0.6)';
+        pc.lineWidth = 1;
+        pc.stroke();
+    }
+};
+atlasImg.src = canvas.toDataURL();
+
+// ============================================================
+// 保存ボタン
+// ============================================================
 document.getElementById('btn-save').addEventListener('click', () => {
     const link = document.createElement('a');
     link.download = 'pose_atlas_template_1024.png';

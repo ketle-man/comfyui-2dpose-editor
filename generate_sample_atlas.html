@@ -30,50 +30,50 @@
 
 <script>
 // ============================================================
-// UV マップ（1024×1024 基準）
+// UV マップ（pose_editor.js と完全同期）
 // ============================================================
 const uvMap = {
-    head:        { x:   0, y:   0, w: 110, h: 150 },
-    neck:        { x: 120, y:   0, w:  52, h:  70 },
-    chest:       { x: 180, y:   0, w: 170, h: 150 },
-    abdomen:     { x: 360, y:   0, w: 150, h: 130 },
-    arm:         { x:   0, y: 160, w:  60, h: 160 },
-    foreArm:     { x:  80, y: 160, w:  52, h: 140 },
-    handClosed:  { x: 140, y: 160, w:  48, h:  60 },
-    handOpen:    { x: 200, y: 160, w:  68, h:  72 },
-    leg:         { x:   0, y: 340, w:  80, h: 200 },
-    shin:        { x: 100, y: 340, w:  68, h: 190 },
-    foot:        { x: 180, y: 340, w:  56, h:  80 },
-    headBack:    { x:   0, y: 560, w: 110, h: 150 },
-    chestBack:   { x: 120, y: 560, w: 170, h: 150 },
-    abdomenBack: { x: 300, y: 560, w: 150, h: 130 },
+    // ROW1 (y:0)
+    head:         { x:   0, y:   0, w: 110, h: 170 },
+    neck:         { x: 120, y:   0, w:  52, h:  80 },
+    chest:        { x: 180, y:   0, w: 170, h: 170 },
+    abdomen:      { x: 360, y:   0, w: 150, h: 150 },
+    // ROW2 (y:180) 腕・手・足
+    armL:         { x:   0, y: 180, w:  60, h: 180 },
+    armR:         { x:  70, y: 180, w:  60, h: 180 },
+    foreArmL:     { x: 140, y: 180, w:  52, h: 160 },
+    foreArmR:     { x: 200, y: 180, w:  52, h: 160 },
+    handClosedL:  { x: 260, y: 180, w:  52, h:  64 },
+    handClosedR:  { x: 320, y: 180, w:  52, h:  64 },
+    handOpenL:    { x: 380, y: 180, w:  68, h:  76 },
+    handOpenR:    { x: 456, y: 180, w:  68, h:  76 },
+    footL:        { x: 540, y: 180, w:  72, h:  90 },
+    footR:        { x: 620, y: 180, w:  72, h:  90 },
+    // ROW3 (y:370) 脚
+    legL:         { x:   0, y: 370, w:  80, h: 220 },
+    legR:         { x:  90, y: 370, w:  80, h: 220 },
+    shinL:        { x: 180, y: 370, w:  68, h: 210 },
+    shinR:        { x: 258, y: 370, w:  68, h: 210 },
+    // ROW4 (y:610) 背面
+    headBack:     { x:   0, y: 610, w: 110, h: 170 },
+    chestBack:    { x: 120, y: 610, w: 170, h: 170 },
+    abdomenBack:  { x: 300, y: 610, w: 150, h: 150 },
 };
 
 // ============================================================
-// スキンカラーパレット
+// カラーパレット
 // ============================================================
-const SKIN      = '#f5c8a0';
-const SKIN_D    = '#e0a870';  // 暗め肌
-const SKIN_DD   = '#c8885a';  // 影
-const CLOTH_B   = '#4466bb';  // 服（青）
-const CLOTH_BD  = '#2244aa';  // 服（濃い青）
-const CLOTH_L   = '#6688dd';  // 服（明るい青）
-const PANT_B    = '#334488';  // ズボン
-const PANT_D    = '#223366';
-const HAIR      = '#3a2010';  // 髪
-const HAIR_H    = '#6a4828';  // 髪ハイライト
-const WHITE     = '#f0f0f0';
-const GRAY_L    = '#cccccc';
-const GRAY_D    = '#888888';
-const EYE_W     = '#ffffff';
-const EYE_B     = '#111133';
-const EYE_C     = '#3355cc';  // 瞳
-const LIP       = '#e87878';
-const SHOE      = '#221100';
-const SHOE_S    = '#553322';
+const SKIN    = '#f5c8a0', SKIN_D  = '#e0a870', SKIN_DD = '#c8885a';
+const CLOTH_B = '#4466bb', CLOTH_BD= '#2244aa', CLOTH_L = '#6688dd';
+const PANT_B  = '#334488', PANT_D  = '#223366';
+const HAIR    = '#3a2010', HAIR_H  = '#6a4828';
+const WHITE   = '#f0f0f0', GRAY_L  = '#cccccc', GRAY_D  = '#888888';
+const EYE_W   = '#ffffff', EYE_B   = '#111133', EYE_C   = '#3355cc';
+const LIP     = '#e87878';
+const SHOE    = '#221100', SHOE_S  = '#553322';
 
 // ============================================================
-// アトラス描画
+// 描画ユーティリティ
 // ============================================================
 const atlasCanvas = document.getElementById('atlas');
 const ac = atlasCanvas.getContext('2d');
@@ -91,332 +91,310 @@ function ellipse(ctx, cx, cy, rx, ry, fill, stroke=null, sw=1) {
     if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = sw; ctx.stroke(); }
 }
 function line(ctx, x1, y1, x2, y2, color, w=1, dash=[]) {
-    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = w;
+    ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=w;
     ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.restore();
 }
 function grad(ctx, x, y, w, h, c1, c2, horiz=false) {
-    const g = horiz
-        ? ctx.createLinearGradient(x, y, x+w, y)
-        : ctx.createLinearGradient(x, y, x, y+h);
-    g.addColorStop(0, c1); g.addColorStop(1, c2);
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
+    const g = horiz ? ctx.createLinearGradient(x,y,x+w,y) : ctx.createLinearGradient(x,y,x,y+h);
+    g.addColorStop(0,c1); g.addColorStop(1,c2);
+    ctx.fillStyle=g; ctx.fillRect(x,y,w,h);
 }
 
-// ---- 背景（透明）----
 ac.clearRect(0, 0, 1024, 1024);
 
 // ============================================================
-// head (0,0,110,150) — 正面・顔
+// 頭・正面
 // ============================================================
 (function(){
     const {x,y,w,h} = uvMap.head;
-    // 顔ベース
-    rect(ac, x, y, w, h, 18, SKIN, SKIN_DD, 1.5);
-    // 髪（上部）
-    rect(ac, x, y, w, h*0.45, 14, HAIR, null);
-    // 髪ハイライト
-    const hg = ac.createLinearGradient(x, y, x+w, y+h*0.3);
-    hg.addColorStop(0.2, HAIR_H+'88'); hg.addColorStop(0.6, 'transparent');
-    ac.fillStyle = hg; ac.beginPath();
-    if(ac.roundRect) ac.roundRect(x+4, y+2, w-8, h*0.35, 12); else ac.rect(x+4,y+2,w-8,h*0.35);
-    ac.fill();
-    // おでこ
-    rect(ac, x+8, y+h*0.38, w-16, h*0.12, 0, SKIN);
-    // 目（左）
-    ellipse(ac, x+w*0.3, y+h*0.55, 12, 8, EYE_W);
-    ellipse(ac, x+w*0.3, y+h*0.55, 8, 6, EYE_C);
-    ellipse(ac, x+w*0.3, y+h*0.555, 5, 4, EYE_B);
-    ellipse(ac, x+w*0.27, y+h*0.54, 2, 2, WHITE); // 光
-    // 目（右）
-    ellipse(ac, x+w*0.7, y+h*0.55, 12, 8, EYE_W);
-    ellipse(ac, x+w*0.7, y+h*0.55, 8, 6, EYE_C);
-    ellipse(ac, x+w*0.7, y+h*0.555, 5, 4, EYE_B);
-    ellipse(ac, x+w*0.67, y+h*0.54, 2, 2, WHITE);
-    // まつげ（左）
-    line(ac, x+w*0.19, y+h*0.50, x+w*0.41, y+h*0.50, '#111', 1.5);
-    // まつげ（右）
-    line(ac, x+w*0.59, y+h*0.50, x+w*0.81, y+h*0.50, '#111', 1.5);
-    // 眉（左）
-    line(ac, x+w*0.18, y+h*0.44, x+w*0.40, y+h*0.43, HAIR, 2.5);
-    // 眉（右）
-    line(ac, x+w*0.60, y+h*0.43, x+w*0.82, y+h*0.44, HAIR, 2.5);
-    // 鼻
-    ac.beginPath(); ac.moveTo(x+w*0.5, y+h*0.6); ac.quadraticCurveTo(x+w*0.55, y+h*0.7, x+w*0.5, y+h*0.72);
-    ac.strokeStyle = SKIN_DD; ac.lineWidth = 1.5; ac.stroke();
-    // 口
-    ac.beginPath(); ac.moveTo(x+w*0.35, y+h*0.80); ac.quadraticCurveTo(x+w*0.5, y+h*0.88, x+w*0.65, y+h*0.80);
-    ac.strokeStyle = LIP; ac.lineWidth = 2; ac.stroke();
-    ellipse(ac, x+w*0.5, y+h*0.815, 8, 3, LIP+'99');
-    // 頬
-    ellipse(ac, x+w*0.2, y+h*0.68, 8, 5, LIP+'55');
-    ellipse(ac, x+w*0.8, y+h*0.68, 8, 5, LIP+'55');
-    // 耳
-    ellipse(ac, x+2, y+h*0.58, 5, 8, SKIN, SKIN_DD, 1);
-    ellipse(ac, x+w-2, y+h*0.58, 5, 8, SKIN, SKIN_DD, 1);
-    // 顎シャドウ
-    const cg = ac.createLinearGradient(x, y+h*0.82, x, y+h);
-    cg.addColorStop(0, 'transparent'); cg.addColorStop(1, SKIN_D+'88');
-    ac.fillStyle = cg; ac.beginPath(); if(ac.roundRect) ac.roundRect(x+5, y+h*0.82, w-10, h*0.18, [0,0,14,14]); else ac.rect(x+5,y+h*0.82,w-10,h*0.18); ac.fill();
+    rect(ac,x,y,w,h,18,SKIN,SKIN_DD,1.5);
+    rect(ac,x,y,w,h*0.45,14,HAIR,null);
+    const hg=ac.createLinearGradient(x,y,x+w,y+h*0.3);
+    hg.addColorStop(0.2,HAIR_H+'88'); hg.addColorStop(0.6,'transparent');
+    ac.fillStyle=hg; ac.beginPath();
+    if(ac.roundRect) ac.roundRect(x+4,y+2,w-8,h*0.35,12); else ac.rect(x+4,y+2,w-8,h*0.35); ac.fill();
+    rect(ac,x+8,y+h*0.38,w-16,h*0.12,0,SKIN);
+    ellipse(ac,x+w*0.3,y+h*0.55,12,8,EYE_W);
+    ellipse(ac,x+w*0.3,y+h*0.55,8,6,EYE_C);
+    ellipse(ac,x+w*0.3,y+h*0.555,5,4,EYE_B);
+    ellipse(ac,x+w*0.27,y+h*0.54,2,2,WHITE);
+    ellipse(ac,x+w*0.7,y+h*0.55,12,8,EYE_W);
+    ellipse(ac,x+w*0.7,y+h*0.55,8,6,EYE_C);
+    ellipse(ac,x+w*0.7,y+h*0.555,5,4,EYE_B);
+    ellipse(ac,x+w*0.67,y+h*0.54,2,2,WHITE);
+    line(ac,x+w*0.19,y+h*0.50,x+w*0.41,y+h*0.50,'#111',1.5);
+    line(ac,x+w*0.59,y+h*0.50,x+w*0.81,y+h*0.50,'#111',1.5);
+    line(ac,x+w*0.18,y+h*0.44,x+w*0.40,y+h*0.43,HAIR,2.5);
+    line(ac,x+w*0.60,y+h*0.43,x+w*0.82,y+h*0.44,HAIR,2.5);
+    ac.beginPath(); ac.moveTo(x+w*0.5,y+h*0.6); ac.quadraticCurveTo(x+w*0.55,y+h*0.7,x+w*0.5,y+h*0.72);
+    ac.strokeStyle=SKIN_DD; ac.lineWidth=1.5; ac.stroke();
+    ac.beginPath(); ac.moveTo(x+w*0.35,y+h*0.80); ac.quadraticCurveTo(x+w*0.5,y+h*0.88,x+w*0.65,y+h*0.80);
+    ac.strokeStyle=LIP; ac.lineWidth=2; ac.stroke();
+    ellipse(ac,x+w*0.5,y+h*0.815,8,3,LIP+'99');
+    ellipse(ac,x+w*0.2,y+h*0.68,8,5,LIP+'55');
+    ellipse(ac,x+w*0.8,y+h*0.68,8,5,LIP+'55');
+    ellipse(ac,x+2,y+h*0.58,5,8,SKIN,SKIN_DD,1);
+    ellipse(ac,x+w-2,y+h*0.58,5,8,SKIN,SKIN_DD,1);
+    const cg=ac.createLinearGradient(x,y+h*0.82,x,y+h);
+    cg.addColorStop(0,'transparent'); cg.addColorStop(1,SKIN_D+'88');
+    ac.fillStyle=cg; ac.beginPath();
+    if(ac.roundRect) ac.roundRect(x+5,y+h*0.82,w-10,h*0.18,[0,0,14,14]); else ac.rect(x+5,y+h*0.82,w-10,h*0.18); ac.fill();
 })();
 
 // ============================================================
-// neck (120,0,52,70) — 首
+// 首
 // ============================================================
 (function(){
     const {x,y,w,h} = uvMap.neck;
-    grad(ac, x, y, w, h, SKIN, SKIN_D);
-    // 首筋
-    line(ac, x+w*0.42, y+2, x+w*0.42, y+h-2, SKIN_DD+'88', 1.5);
-    line(ac, x+w*0.58, y+2, x+w*0.58, y+h-2, SKIN_DD+'88', 1.5);
-    rect(ac, x, y, w, h, 4, 'transparent', SKIN_DD, 1);
+    grad(ac,x,y,w,h,SKIN,SKIN_D);
+    line(ac,x+w*0.42,y+2,x+w*0.42,y+h-2,SKIN_DD+'88',1.5);
+    line(ac,x+w*0.58,y+2,x+w*0.58,y+h-2,SKIN_DD+'88',1.5);
+    rect(ac,x,y,w,h,4,'transparent',SKIN_DD,1);
 })();
 
 // ============================================================
-// chest (180,0,170,150) — 胸・正面
+// 胸・正面
 // ============================================================
 (function(){
     const {x,y,w,h} = uvMap.chest;
-    // 服ベース
-    grad(ac, x, y, w, h, CLOTH_L, CLOTH_BD);
-    rect(ac, x, y, w, h, 0, 'transparent', CLOTH_BD, 1.5);
-    // 襟元（Vネック）
-    ac.beginPath(); ac.moveTo(x+w*0.5, y+h*0.25);
-    ac.lineTo(x+w*0.3, y); ac.lineTo(x+w*0.7, y); ac.closePath();
-    ac.fillStyle = SKIN+'cc'; ac.fill();
-    // 首穴
-    ellipse(ac, x+w*0.5, y+h*0.08, 16, 10, SKIN);
-    // ボタン列
-    for(let i=0; i<3; i++){
-        ellipse(ac, x+w*0.5, y+h*(0.35+i*0.2), 4, 4, WHITE+'cc', CLOTH_BD, 1);
-    }
-    // 肩のライン
-    line(ac, x, y+h*0.15, x+w, y+h*0.15, CLOTH_BD+'99', 1.5);
-    // 胸のシェーディング
-    const sg = ac.createRadialGradient(x+w*0.5, y+h*0.5, 10, x+w*0.5, y+h*0.5, w*0.7);
-    sg.addColorStop(0, 'rgba(255,255,255,0.12)'); sg.addColorStop(1, 'rgba(0,0,30,0.18)');
-    ac.fillStyle = sg; ac.fillRect(x, y, w, h);
+    grad(ac,x,y,w,h,CLOTH_L,CLOTH_BD);
+    rect(ac,x,y,w,h,0,'transparent',CLOTH_BD,1.5);
+    ac.beginPath(); ac.moveTo(x+w*0.5,y+h*0.25);
+    ac.lineTo(x+w*0.3,y); ac.lineTo(x+w*0.7,y); ac.closePath();
+    ac.fillStyle=SKIN+'cc'; ac.fill();
+    ellipse(ac,x+w*0.5,y+h*0.08,16,10,SKIN);
+    for(let i=0;i<3;i++) ellipse(ac,x+w*0.5,y+h*(0.35+i*0.2),4,4,WHITE+'cc',CLOTH_BD,1);
+    line(ac,x,y+h*0.15,x+w,y+h*0.15,CLOTH_BD+'99',1.5);
+    const sg=ac.createRadialGradient(x+w*0.5,y+h*0.5,10,x+w*0.5,y+h*0.5,w*0.7);
+    sg.addColorStop(0,'rgba(255,255,255,0.12)'); sg.addColorStop(1,'rgba(0,0,30,0.18)');
+    ac.fillStyle=sg; ac.fillRect(x,y,w,h);
 })();
 
 // ============================================================
-// abdomen (360,0,150,130) — 腹部・正面
+// 腹部・正面
 // ============================================================
 (function(){
     const {x,y,w,h} = uvMap.abdomen;
-    grad(ac, x, y, w, h, CLOTH_B, CLOTH_BD);
-    // 腰ベルト
-    rect(ac, x, y+h*0.78, w, h*0.22, 0, PANT_D);
-    // ベルトバックル
-    rect(ac, x+w*0.42, y+h*0.8, w*0.16, h*0.12, 2, GRAY_L, GRAY_D, 1);
-    // 服のシワ
-    line(ac, x+w*0.3, y+h*0.1, x+w*0.35, y+h*0.7, CLOTH_BD+'88', 1);
-    line(ac, x+w*0.65, y+h*0.1, x+w*0.62, y+h*0.7, CLOTH_BD+'88', 1);
-    rect(ac, x, y, w, h, 0, 'transparent', CLOTH_BD, 1.5);
+    grad(ac,x,y,w,h,CLOTH_B,CLOTH_BD);
+    rect(ac,x,y+h*0.78,w,h*0.22,0,PANT_D);
+    rect(ac,x+w*0.42,y+h*0.8,w*0.16,h*0.12,2,GRAY_L,GRAY_D,1);
+    line(ac,x+w*0.3,y+h*0.1,x+w*0.35,y+h*0.7,CLOTH_BD+'88',1);
+    line(ac,x+w*0.65,y+h*0.1,x+w*0.62,y+h*0.7,CLOTH_BD+'88',1);
+    rect(ac,x,y,w,h,0,'transparent',CLOTH_BD,1.5);
 })();
 
 // ============================================================
-// arm (0,160,60,160) — 上腕
+// 上腕 L / R
 // ============================================================
-(function(){
-    const {x,y,w,h} = uvMap.arm;
-    grad(ac, x, y, w, h, CLOTH_L, CLOTH_B);
-    // 袖のライン
-    line(ac, x+w*0.25, y+4, x+w*0.25, y+h-4, CLOTH_BD+'66', 1);
-    line(ac, x+w*0.75, y+4, x+w*0.75, y+h-4, CLOTH_BD+'66', 1);
-    rect(ac, x, y, w, h, 4, 'transparent', CLOTH_BD, 1.5);
-})();
-
-// ============================================================
-// foreArm (80,160,52,140) — 前腕
-// ============================================================
-(function(){
-    const {x,y,w,h} = uvMap.foreArm;
-    // 上半分は袖、下半分は肌
-    grad(ac, x, y, w, h*0.45, CLOTH_B, CLOTH_BD);
-    grad(ac, x, y+h*0.45, w, h*0.55, SKIN, SKIN_D);
-    // 袖口ライン
-    line(ac, x, y+h*0.46, x+w, y+h*0.46, CLOTH_BD, 2);
-    rect(ac, x, y, w, h, 4, 'transparent', SKIN_DD+'88', 1);
-})();
-
-// ============================================================
-// handClosed (140,160,48,60) — 握り手
-// ============================================================
-(function(){
-    const {x,y,w,h} = uvMap.handClosed;
-    // 手の甲
-    rect(ac, x, y, w, h*0.55, 6, SKIN, SKIN_DD, 1);
-    // 指（4本まとめて）
-    for(let i=0; i<4; i++){
-        const fx = x + w*0.06 + i*(w*0.23);
-        rect(ac, fx, y+h*0.48, w*0.18, h*0.52, 3, SKIN, SKIN_DD+'99', 1);
+function drawArm(uv, mirror=false) {
+    const {x,y,w,h} = uv;
+    grad(ac,x,y,w,h,CLOTH_L,CLOTH_B);
+    line(ac,x+w*0.25,y+4,x+w*0.25,y+h-4,CLOTH_BD+'66',1);
+    line(ac,x+w*0.75,y+4,x+w*0.75,y+h-4,CLOTH_BD+'66',1);
+    if(mirror) {
+        // R側：左右シェーディング反転
+        const mg=ac.createLinearGradient(x,y,x+w,y);
+        mg.addColorStop(0,'rgba(255,255,255,0.08)'); mg.addColorStop(1,'rgba(0,0,0,0.12)');
+        ac.fillStyle=mg; ac.fillRect(x,y,w,h);
     }
-    // 指の関節ライン
-    for(let i=0; i<4; i++){
-        const fx = x + w*0.06 + i*(w*0.23) + w*0.09;
-        line(ac, fx, y+h*0.6, fx, y+h*0.72, SKIN_DD+'88', 1);
+    rect(ac,x,y,w,h,4,'transparent',CLOTH_BD,1.5);
+}
+drawArm(uvMap.armL, false);
+drawArm(uvMap.armR, true);
+
+// ============================================================
+// 前腕 L / R
+// ============================================================
+function drawForeArm(uv, mirror=false) {
+    const {x,y,w,h} = uv;
+    grad(ac,x,y,w,h*0.45,CLOTH_B,CLOTH_BD);
+    grad(ac,x,y+h*0.45,w,h*0.55,SKIN,SKIN_D);
+    line(ac,x,y+h*0.46,x+w,y+h*0.46,CLOTH_BD,2);
+    if(mirror) {
+        const mg=ac.createLinearGradient(x,y,x+w,y);
+        mg.addColorStop(0,'rgba(255,255,255,0.06)'); mg.addColorStop(1,'rgba(0,0,0,0.1)');
+        ac.fillStyle=mg; ac.fillRect(x,y,w,h);
     }
+    rect(ac,x,y,w,h,4,'transparent',SKIN_DD+'88',1);
+}
+drawForeArm(uvMap.foreArmL, false);
+drawForeArm(uvMap.foreArmR, true);
+
+// ============================================================
+// グー手 L / R
+// ============================================================
+function drawHandClosed(uv, thumbRight=true) {
+    const {x,y,w,h} = uv;
+    rect(ac,x,y,w,h*0.55,6,SKIN,SKIN_DD,1);
+    for(let i=0;i<4;i++){
+        const fx = x+w*0.06+i*(w*0.23);
+        rect(ac,fx,y+h*0.48,w*0.18,h*0.52,3,SKIN,SKIN_DD+'99',1);
+    }
+    for(let i=0;i<4;i++){
+        const fx = x+w*0.06+i*(w*0.23)+w*0.09;
+        line(ac,fx,y+h*0.6,fx,y+h*0.72,SKIN_DD+'88',1);
+    }
+    // thumbRight=true: 親指が右端（外側）、false: 親指が左端（外側）
+    const tx = thumbRight ? x+w*0.78 : x+w*0.02;
+    rect(ac,tx,y+h*0.1,w*0.2,h*0.42,3,SKIN,SKIN_DD+'99',1);
+}
+// handClosedL(画面右の手=左腕): 親指を左端（外側）
+// handClosedR(画面左の手=右腕): 親指を右端（外側）
+drawHandClosed(uvMap.handClosedL, false);  // 親指が左端（外側）
+drawHandClosed(uvMap.handClosedR, true);   // 親指が右端（外側）
+
+// ============================================================
+// パー手 L / R
+// ============================================================
+function drawHandOpen(uv, thumbRight=true) {
+    const {x,y,w,h} = uv;
+    // flipTex=true: y=0が手首側、y=hが指先側 → 掌をy側(上)、指をy+h側(下)に配置
+    rect(ac,x+w*0.06,y,w*0.76,h*0.7,6,SKIN,SKIN_DD,1);
+    const fw=w*0.16, fgap=w*0.195;
+    for(let i=0;i<4;i++) rect(ac,x+w*0.05+i*fgap,y+h*0.45,fw,h*0.55,4,SKIN,SKIN_DD+'99',1);
     // 親指
-    rect(ac, x+w*0.78, y+h*0.1, w*0.2, h*0.42, 3, SKIN, SKIN_DD+'99', 1);
-})();
+    const tx = thumbRight ? x+w*0.72 : x;
+    rect(ac,tx,y+h*0.45,w*0.28,h*0.28,3,SKIN,SKIN_DD+'99',1);
+    ac.beginPath(); ac.moveTo(x+w*0.15,y+h*0.35); ac.quadraticCurveTo(x+w*0.45,y+h*0.22,x+w*0.72,y+h*0.35);
+    ac.strokeStyle=SKIN_DD+'99'; ac.lineWidth=1; ac.stroke();
+}
+// handOpenL(画面右の手=左腕): flipTex=true、腕は右斜め下向き → テクスチャx右が体の外側 → 親指を左端
+// handOpenR(画面左の手=右腕): flipTex=true、腕は左斜め下向き → テクスチャx右が体の外側 → 親指を右端
+drawHandOpen(uvMap.handOpenL, false);  // 親指が左端（外側）
+drawHandOpen(uvMap.handOpenR, true);   // 親指が右端（外側）
 
 // ============================================================
-// handOpen (200,160,68,72) — 開き手
+// 太もも L / R
 // ============================================================
-(function(){
-    const {x,y,w,h} = uvMap.handOpen;
-    // 手のひら
-    rect(ac, x+w*0.06, y+h*0.3, w*0.76, h*0.7, 6, SKIN, SKIN_DD, 1);
-    // 指4本
-    const fw = w*0.16; const fgap = w*0.195;
-    for(let i=0; i<4; i++){
-        rect(ac, x+w*0.05+i*fgap, y, fw, h*0.55, 4, SKIN, SKIN_DD+'99', 1);
+function drawLeg(uv, mirror=false) {
+    const {x,y,w,h} = uv;
+    grad(ac,x,y,w,h,PANT_B,PANT_D);
+    line(ac,x+w*0.5,y+4,x+w*0.5,y+h-4,PANT_B+'66',1,[4,4]);
+    const lg=ac.createLinearGradient(x,y,x+w,y);
+    if(mirror){
+        lg.addColorStop(0,'rgba(0,0,0,0.1)'); lg.addColorStop(0.7,'transparent'); lg.addColorStop(1,'rgba(0,0,0,0.15)');
+    } else {
+        lg.addColorStop(0,'rgba(0,0,0,0.15)'); lg.addColorStop(0.3,'transparent'); lg.addColorStop(1,'rgba(0,0,0,0.1)');
     }
-    // 親指（横）
-    rect(ac, x+w*0.72, y+h*0.25, w*0.28, h*0.28, 3, SKIN, SKIN_DD+'99', 1);
-    // 掌の線
-    ac.beginPath(); ac.moveTo(x+w*0.15, y+h*0.65); ac.quadraticCurveTo(x+w*0.45, y+h*0.78, x+w*0.72, y+h*0.65);
-    ac.strokeStyle = SKIN_DD+'99'; ac.lineWidth = 1; ac.stroke();
-})();
+    ac.fillStyle=lg; ac.fillRect(x,y,w,h);
+    rect(ac,x,y,w,h,4,'transparent',PANT_D,1.5);
+}
+drawLeg(uvMap.legL, false);
+drawLeg(uvMap.legR, true);
 
 // ============================================================
-// leg (0,340,80,200) — 太もも
+// すね L / R
 // ============================================================
-(function(){
-    const {x,y,w,h} = uvMap.leg;
-    grad(ac, x, y, w, h, PANT_B, PANT_D);
-    // パンツのステッチ
-    line(ac, x+w*0.5, y+4, x+w*0.5, y+h-4, PANT_B+'66', 1, [4,4]);
-    // シェーディング（内側）
-    const lg = ac.createLinearGradient(x, y, x+w, y);
-    lg.addColorStop(0, 'rgba(0,0,0,0.15)'); lg.addColorStop(0.3, 'transparent'); lg.addColorStop(1, 'rgba(0,0,0,0.1)');
-    ac.fillStyle = lg; ac.fillRect(x, y, w, h);
-    rect(ac, x, y, w, h, 4, 'transparent', PANT_D, 1.5);
-})();
-
-// ============================================================
-// shin (100,340,68,190) — すね
-// ============================================================
-(function(){
-    const {x,y,w,h} = uvMap.shin;
-    grad(ac, x, y, w, h*0.7, PANT_D, PANT_D);
-    // 膝部分
-    ellipse(ac, x+w*0.5, y+h*0.08, w*0.4, h*0.08, PANT_B+'cc');
-    // 下部（ソックス）
-    grad(ac, x, y+h*0.7, w, h*0.3, WHITE, GRAY_L);
-    // ソックスの縞
-    for(let i=0; i<2; i++){
-        rect(ac, x+2, y+h*(0.74+i*0.07), w-4, h*0.025, 0, CLOTH_B+'cc');
+function drawShin(uv, mirror=false) {
+    const {x,y,w,h} = uv;
+    grad(ac,x,y,w,h*0.7,PANT_D,PANT_D);
+    ellipse(ac,x+w*0.5,y+h*0.08,w*0.4,h*0.08,PANT_B+'cc');
+    grad(ac,x,y+h*0.7,w,h*0.3,WHITE,GRAY_L);
+    for(let i=0;i<2;i++) rect(ac,x+2,y+h*(0.74+i*0.07),w-4,h*0.025,0,CLOTH_B+'cc');
+    if(mirror){
+        const mg=ac.createLinearGradient(x,y,x+w,y);
+        mg.addColorStop(0,'rgba(255,255,255,0.06)'); mg.addColorStop(1,'rgba(0,0,0,0.1)');
+        ac.fillStyle=mg; ac.fillRect(x,y,w,h);
     }
-    rect(ac, x, y, w, h, 4, 'transparent', PANT_D+'99', 1.5);
-})();
+    rect(ac,x,y,w,h,4,'transparent',PANT_D+'99',1.5);
+}
+drawShin(uvMap.shinL, false);
+drawShin(uvMap.shinR, true);
 
 // ============================================================
-// foot (180,340,56,80) — 足
+// 足（シューズ）L / R  ※つま先を外側に
 // ============================================================
-(function(){
-    const {x,y,w,h} = uvMap.foot;
-    // シューズ
-    grad(ac, x, y, w, h, SHOE_S, SHOE);
+function drawFoot(uv, mirror=false) {
+    const {x,y,w,h} = uv;
+    grad(ac,x,y,w,h,SHOE_S,SHOE);
+    // つま先側（mirrorならx側、通常ならx+w側）
+    const toeX = mirror ? x : x+w*0.55;
+    const toeW = w*0.45;
+    ellipse(ac,toeX+(mirror?0:toeW/2),y+h*0.55,toeW*0.5,h*0.3,SHOE+'cc');
     // ソール
-    rect(ac, x, y+h*0.82, w, h*0.18, [0,0,3,3], GRAY_D);
-    // シューズのライン
-    line(ac, x+w*0.15, y+h*0.3, x+w*0.85, y+h*0.3, SHOE_S, 1.5);
+    rect(ac,x,y+h*0.82,w,h*0.18,[0,0,3,3],GRAY_D);
+    // シューズライン
+    line(ac,x+w*0.15,y+h*0.3,x+w*0.85,y+h*0.3,SHOE_S,1.5);
     // 靴紐
-    for(let i=0; i<3; i++){
-        line(ac, x+w*0.2, y+h*(0.35+i*0.13), x+w*0.8, y+h*(0.35+i*0.13), GRAY_L+'bb', 1);
-    }
-    rect(ac, x, y, w, h, 4, 'transparent', SHOE, 1.5);
-})();
+    for(let i=0;i<3;i++) line(ac,x+w*0.2,y+h*(0.35+i*0.13),x+w*0.8,y+h*(0.35+i*0.13),GRAY_L+'bb',1);
+    rect(ac,x,y,w,h,4,'transparent',SHOE,1.5);
+}
+drawFoot(uvMap.footL, false);  // 左足：つま先が右側（外側）
+drawFoot(uvMap.footR, true);   // 右足：つま先が左側（外側）
 
 // ============================================================
-// headBack (0,560,110,150) — 後頭部
+// 後頭部
 // ============================================================
 (function(){
     const {x,y,w,h} = uvMap.headBack;
-    rect(ac, x, y, w, h, 18, SKIN, SKIN_DD, 1.5);
-    // 髪（全体）
-    rect(ac, x, y, w, h, 16, HAIR, null);
-    // 髪の束
-    const hg = ac.createLinearGradient(x, y, x+w, y+h);
-    hg.addColorStop(0, HAIR_H+'66'); hg.addColorStop(0.5, 'transparent'); hg.addColorStop(1, '#000000aa');
-    ac.fillStyle = hg; ac.beginPath();
-    if(ac.roundRect) ac.roundRect(x+2, y+2, w-4, h-4, 14); else ac.rect(x+2,y+2,w-4,h-4);
-    ac.fill();
-    // 髪の流れ線
-    for(let i=0; i<5; i++){
-        ac.beginPath(); ac.moveTo(x+w*0.2+i*(w*0.15), y+h*0.1);
-        ac.quadraticCurveTo(x+w*0.15+i*(w*0.16), y+h*0.6, x+w*0.1+i*(w*0.2), y+h*0.95);
-        ac.strokeStyle = HAIR_H+'44'; ac.lineWidth = 1.5; ac.stroke();
+    rect(ac,x,y,w,h,18,SKIN,SKIN_DD,1.5);
+    rect(ac,x,y,w,h,16,HAIR,null);
+    const hg=ac.createLinearGradient(x,y,x+w,y+h);
+    hg.addColorStop(0,HAIR_H+'66'); hg.addColorStop(0.5,'transparent'); hg.addColorStop(1,'#000000aa');
+    ac.fillStyle=hg; ac.beginPath();
+    if(ac.roundRect) ac.roundRect(x+2,y+2,w-4,h-4,14); else ac.rect(x+2,y+2,w-4,h-4); ac.fill();
+    for(let i=0;i<5;i++){
+        ac.beginPath(); ac.moveTo(x+w*0.2+i*(w*0.15),y+h*0.1);
+        ac.quadraticCurveTo(x+w*0.15+i*(w*0.16),y+h*0.6,x+w*0.1+i*(w*0.2),y+h*0.95);
+        ac.strokeStyle=HAIR_H+'44'; ac.lineWidth=1.5; ac.stroke();
     }
-    // うなじ部分
-    const ng = ac.createLinearGradient(x, y+h*0.75, x, y+h);
-    ng.addColorStop(0, 'transparent'); ng.addColorStop(1, SKIN+'cc');
-    ac.fillStyle = ng; ac.beginPath();
-    if(ac.roundRect) ac.roundRect(x+15, y+h*0.78, w-30, h*0.22, [0,0,10,10]); else ac.rect(x+15,y+h*0.78,w-30,h*0.22);
-    ac.fill();
-    // 耳（後ろから見た）
-    ellipse(ac, x+3, y+h*0.55, 5, 8, SKIN, SKIN_DD, 1);
-    ellipse(ac, x+w-3, y+h*0.55, 5, 8, SKIN, SKIN_DD, 1);
+    const ng=ac.createLinearGradient(x,y+h*0.75,x,y+h);
+    ng.addColorStop(0,'transparent'); ng.addColorStop(1,SKIN+'cc');
+    ac.fillStyle=ng; ac.beginPath();
+    if(ac.roundRect) ac.roundRect(x+15,y+h*0.78,w-30,h*0.22,[0,0,10,10]); else ac.rect(x+15,y+h*0.78,w-30,h*0.22); ac.fill();
+    ellipse(ac,x+3,y+h*0.55,5,8,SKIN,SKIN_DD,1);
+    ellipse(ac,x+w-3,y+h*0.55,5,8,SKIN,SKIN_DD,1);
 })();
 
 // ============================================================
-// chestBack (120,560,170,150) — 胸・背面
+// 胸・背面
 // ============================================================
 (function(){
     const {x,y,w,h} = uvMap.chestBack;
-    grad(ac, x, y, w, h, CLOTH_B, CLOTH_BD);
-    // 背中の縫い目（センター）
-    line(ac, x+w*0.5, y+4, x+w*0.5, y+h-4, CLOTH_BD, 1.5, [3,3]);
-    // 肩甲骨のシェーディング
-    ellipse(ac, x+w*0.33, y+h*0.45, 22, 28, CLOTH_BD+'55');
-    ellipse(ac, x+w*0.67, y+h*0.45, 22, 28, CLOTH_BD+'55');
-    // 首穴（後ろ）
-    ellipse(ac, x+w*0.5, y+h*0.06, 14, 9, SKIN);
-    // シェーディング
-    const sg = ac.createRadialGradient(x+w*0.5, y+h*0.5, 10, x+w*0.5, y+h*0.5, w*0.7);
-    sg.addColorStop(0, 'rgba(255,255,255,0.08)'); sg.addColorStop(1, 'rgba(0,0,30,0.2)');
-    ac.fillStyle = sg; ac.fillRect(x, y, w, h);
-    rect(ac, x, y, w, h, 0, 'transparent', CLOTH_BD, 1.5);
+    grad(ac,x,y,w,h,CLOTH_B,CLOTH_BD);
+    line(ac,x+w*0.5,y+4,x+w*0.5,y+h-4,CLOTH_BD,1.5,[3,3]);
+    ellipse(ac,x+w*0.33,y+h*0.45,22,28,CLOTH_BD+'55');
+    ellipse(ac,x+w*0.67,y+h*0.45,22,28,CLOTH_BD+'55');
+    ellipse(ac,x+w*0.5,y+h*0.06,14,9,SKIN);
+    const sg=ac.createRadialGradient(x+w*0.5,y+h*0.5,10,x+w*0.5,y+h*0.5,w*0.7);
+    sg.addColorStop(0,'rgba(255,255,255,0.08)'); sg.addColorStop(1,'rgba(0,0,30,0.2)');
+    ac.fillStyle=sg; ac.fillRect(x,y,w,h);
+    rect(ac,x,y,w,h,0,'transparent',CLOTH_BD,1.5);
 })();
 
 // ============================================================
-// abdomenBack (300,560,150,130) — 腹部・背面
+// 腹部・背面
 // ============================================================
 (function(){
     const {x,y,w,h} = uvMap.abdomenBack;
-    grad(ac, x, y, w, h, CLOTH_B, CLOTH_BD);
-    // 腰ベルト
-    rect(ac, x, y+h*0.78, w, h*0.22, 0, PANT_D);
-    // 背中の縫い目
-    line(ac, x+w*0.5, y+4, x+w*0.5, y+h*0.75, CLOTH_BD, 1.5, [3,3]);
-    // ポケット（後ろ）
-    rect(ac, x+w*0.18, y+h*0.55, w*0.25, h*0.18, 2, 'transparent', CLOTH_BD, 1.5);
-    rect(ac, x+w*0.57, y+h*0.55, w*0.25, h*0.18, 2, 'transparent', CLOTH_BD, 1.5);
-    rect(ac, x, y, w, h, 0, 'transparent', CLOTH_BD, 1.5);
+    grad(ac,x,y,w,h,CLOTH_B,CLOTH_BD);
+    rect(ac,x,y+h*0.78,w,h*0.22,0,PANT_D);
+    line(ac,x+w*0.5,y+4,x+w*0.5,y+h*0.75,CLOTH_BD,1.5,[3,3]);
+    rect(ac,x+w*0.18,y+h*0.55,w*0.25,h*0.18,2,'transparent',CLOTH_BD,1.5);
+    rect(ac,x+w*0.57,y+h*0.55,w*0.25,h*0.18,2,'transparent',CLOTH_BD,1.5);
+    rect(ac,x,y,w,h,0,'transparent',CLOTH_BD,1.5);
 })();
 
 // ============================================================
-// プレビューキャンバス（実際のボーン配置で確認）
+// プレビュー（pose_editor.js と同じ Bone 定義）
 // ============================================================
 const previewCanvas = document.getElementById('preview');
 const pc = previewCanvas.getContext('2d');
-const PW = previewCanvas.width;
-const PH = previewCanvas.height;
+const PW = previewCanvas.width, PH = previewCanvas.height;
 const UV_BASE_W = 1024, UV_BASE_H = 1024;
 const scaleX = atlasCanvas.width / UV_BASE_W;
 const scaleY = atlasCanvas.height / UV_BASE_H;
 
 function scaledUv(uv) {
-    return { x: uv.x*scaleX, y: uv.y*scaleY, w: uv.w*scaleX, h: uv.h*scaleY };
+    return { x:uv.x*scaleX, y:uv.y*scaleY, w:uv.w*scaleX, h:uv.h*scaleY };
 }
 
 class Bone {
-    constructor(name, length, localAngle, uv, width, parent=null, isSlidable=false, minLen=10, maxLen=100, flipTex=false) {
+    constructor(name, length, localAngle, uv, width, parent=null,
+                isSlidable=false, minLen=10, maxLen=100, flipTex=false, texOffset=0) {
         this.name=name; this.length=length; this.localAngle=localAngle;
         this.uv=uv; this.width=width; this.parent=parent;
-        this.isSlidable=isSlidable; this.minLen=minLen; this.maxLen=maxLen;
-        this.flipTex=flipTex;
+        this.flipTex=flipTex; this.texOffset=texOffset;
         this.visible=true; this.children=[];
         if(parent) parent.children.push(this);
         this.gx=0; this.gy=0; this.gAngle=0; this.endX=0; this.endY=0;
@@ -429,32 +407,32 @@ class Bone {
     }
 }
 
-const ROOT_X = PW/2, ROOT_Y = PH*0.533, ROOT_A = 0;
-const root = new Bone("Root",0,0,null,0);
-const abdomen = new Bone("Abdomen",55,-Math.PI/2,uvMap.abdomen,75,root);
-const chest   = new Bone("Chest",  65,0,           uvMap.chest,  85,abdomen);
-const neck    = new Bone("Neck",   20,0,            uvMap.neck,   26,chest);
-const head    = new Bone("Head",   50,0,            uvMap.head,   55,neck);
-const lEyeBase = new Bone("LeftEyeBase", 28,-0.4,null,0,neck);
-const rEyeBase = new Bone("RightEyeBase",28, 0.4,null,0,neck);
-const lEye = new Bone("LeftEye", 2,0,null,0,lEyeBase,true,0,7);
-const rEye = new Bone("RightEye",2,0,null,0,rEyeBase,true,0,7);
-const lShoulder = new Bone("LeftShoulder",  35,-Math.PI/2,      null,        0,chest,true,15,80);
-const rShoulder = new Bone("RightShoulder", 35, Math.PI/2,      null,        0,chest,true,15,80);
-const lArm      = new Bone("LeftArm",       70,-Math.PI/2+0.3,  uvMap.arm,       30,lShoulder,false,10,100,false);
-const lForeArm  = new Bone("LeftForeArm",   60,0,               uvMap.foreArm,   26,lArm,     false,10,100,true);
-const lHand     = new Bone("LeftHand",      25,0,               uvMap.handClosed,24,lForeArm, false,10,100,true);
-const rArm      = new Bone("RightArm",      70, Math.PI/2-0.3,  uvMap.arm,       30,rShoulder,false,10,100,false);
-const rForeArm  = new Bone("RightForeArm",  60,0,               uvMap.foreArm,   26,rArm,     false,10,100,true);
-const rHand     = new Bone("RightHand",     25,0,               uvMap.handClosed,24,rForeArm, false,10,100,true);
-const lHip  = new Bone("LeftHip",   25, Math.PI,         null,      0,root,true,10,60);
-const rHip  = new Bone("RightHip",  25, 0,               null,      0,root,true,10,60);
-const lLeg  = new Bone("LeftLeg",   90,-Math.PI/2+0.1,   uvMap.leg, 40,lHip, false,10,100,false);
-const lShin = new Bone("LeftShin",  85,0,                uvMap.shin,34,lLeg, false,10,100,true);
-const lFoot = new Bone("LeftFoot",  30, Math.PI/2,       uvMap.foot,28,lShin,false,10,100,true);
-const rLeg  = new Bone("RightLeg",  90, Math.PI/2-0.1,   uvMap.leg, 40,rHip, false,10,100,false);
-const rShin = new Bone("RightShin", 85,0,                uvMap.shin,34,rLeg, false,10,100,true);
-const rFoot = new Bone("RightFoot", 30, Math.PI/2,       uvMap.foot,28,rShin,false,10,100,true);
+const ROOT_X=PW/2, ROOT_Y=PH*0.533, ROOT_A=0;
+const root      = new Bone("Root",0,0,null,0);
+const abdomen   = new Bone("Abdomen", 65,-Math.PI/2, uvMap.abdomen,  80,root,        false,10,100,false,-14);
+const chest     = new Bone("Chest",   65,0,           uvMap.chest,    90,abdomen,     false,10,100,false,-14);
+const neck      = new Bone("Neck",    28,0,            uvMap.neck,     26,chest,       false,10,100,false,-12);
+const head      = new Bone("Head",    58,0,            uvMap.head,     55,neck,        false,10,100,false,-14);
+const lEyeBase  = new Bone("LeftEyeBase", 28,-0.4,null,0,neck);
+const rEyeBase  = new Bone("RightEyeBase",28, 0.4,null,0,neck);
+const lEye      = new Bone("LeftEye", 2,0,null,0,lEyeBase,true,0,7);
+const rEye      = new Bone("RightEye",2,0,null,0,rEyeBase,true,0,7);
+const lShoulder = new Bone("LeftShoulder",  35,-Math.PI/2,      null,               0, chest,     true,15,80);
+const rShoulder = new Bone("RightShoulder", 35, Math.PI/2,      null,               0, chest,     true,15,80);
+const lArm      = new Bone("LeftArm",       55,-Math.PI/2+0.3,  uvMap.armL,        30, lShoulder, false,10,100,false,-10);
+const lForeArm  = new Bone("LeftForeArm",   75,0,               uvMap.foreArmL,    26, lArm,      false,10,100,true, -14);
+const lHand     = new Bone("LeftHand",      28,0,               uvMap.handClosedL, 28, lForeArm,  false,10,100,true, -12);
+const rArm      = new Bone("RightArm",      55, Math.PI/2-0.3,  uvMap.armR,        30, rShoulder, false,10,100,false,-10);
+const rForeArm  = new Bone("RightForeArm",  75,0,               uvMap.foreArmR,    26, rArm,      false,10,100,true, -14);
+const rHand     = new Bone("RightHand",     28,0,               uvMap.handClosedR, 28, rForeArm,  false,10,100,true, -12);
+const lHip      = new Bone("LeftHip",   25, Math.PI,          null,        0,root,  true,10,60);
+const rHip      = new Bone("RightHip",  25, 0,                null,        0,root,  true,10,60);
+const lLeg      = new Bone("LeftLeg",   72,-Math.PI/2+0.1,    uvMap.legL,  40,lHip, false,10,100,false);
+const lShin     = new Bone("LeftShin", 103,0,                  uvMap.shinL, 34,lLeg, false,10,100,true, -16);
+const lFoot     = new Bone("LeftFoot",  30, Math.PI/2,         uvMap.footL, 36,lShin,false,10,100,true, -16);
+const rLeg      = new Bone("RightLeg",  72, Math.PI/2-0.1,    uvMap.legR,  40,rHip, false,10,100,false);
+const rShin     = new Bone("RightShin",103,0,                  uvMap.shinR, 34,rLeg, false,10,100,true, -16);
+const rFoot     = new Bone("RightFoot", 30, Math.PI/2,         uvMap.footR, 36,rShin,false,10,100,true, -16);
 
 const drawOrder = [
     lHand, lForeArm, lArm, lShoulder,
@@ -467,28 +445,37 @@ const drawOrder = [
 
 root.update(ROOT_X, ROOT_Y, ROOT_A);
 
-// アトラスが読み込まれてから描画
 const atlasImg = new Image();
 atlasImg.onload = function() {
-    pc.clearRect(0, 0, PW, PH);
-    // 背景
-    pc.fillStyle = '#e8e8e8'; pc.fillRect(0, 0, PW, PH);
+    pc.clearRect(0,0,PW,PH);
+    pc.fillStyle='#3a3a3a'; pc.fillRect(0,0,PW,PH);
 
     for(const bone of drawOrder) {
-        if(!bone.visible) continue;
-        if(bone.uv) {
-            const suv = scaledUv(bone.uv);
-            pc.save();
-            if(bone.flipTex) {
-                pc.translate(bone.gx, bone.gy);
-                pc.rotate(bone.gAngle - Math.PI/2);
-            } else {
-                pc.translate(bone.endX, bone.endY);
-                pc.rotate(bone.gAngle + Math.PI/2);
-            }
-            pc.drawImage(atlasImg, suv.x, suv.y, suv.w, suv.h, -bone.width/2, 0, bone.width, bone.length+10);
-            pc.restore();
+        if(!bone.visible || !bone.uv) continue;
+        const suv = scaledUv(bone.uv);
+        const r   = bone.width / 2;
+        const len = bone.length;
+        const off = bone.texOffset ?? 0;
+
+        pc.save();
+        if(bone.flipTex) {
+            pc.translate(bone.gx, bone.gy);
+            pc.rotate(bone.gAngle - Math.PI/2);
+            pc.translate(0, off);
+        } else {
+            pc.translate(bone.endX, bone.endY);
+            pc.rotate(bone.gAngle + Math.PI/2);
+            pc.translate(0, -off);
         }
+        pc.beginPath();
+        pc.arc(0,   0,   r, Math.PI, 0);
+        pc.lineTo(r, len);
+        pc.arc(0,   len, r, 0,       Math.PI);
+        pc.lineTo(-r, 0);
+        pc.closePath();
+        pc.clip();
+        pc.drawImage(atlasImg, suv.x, suv.y, suv.w, suv.h, -r, 0, bone.width, len);
+        pc.restore();
     }
 };
 atlasImg.src = atlasCanvas.toDataURL();
@@ -497,16 +484,16 @@ atlasImg.src = atlasCanvas.toDataURL();
 // 保存ボタン
 // ============================================================
 document.getElementById('btn-save-atlas').addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = 'pose_atlas_sample_1024.png';
-    link.href = atlasCanvas.toDataURL('image/png');
-    link.click();
+    const a = document.createElement('a');
+    a.download = 'pose_atlas_sample_1024.png';
+    a.href = atlasCanvas.toDataURL('image/png');
+    a.click();
 });
 document.getElementById('btn-save-preview').addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = 'pose_preview_sample.png';
-    link.href = previewCanvas.toDataURL('image/png');
-    link.click();
+    const a = document.createElement('a');
+    a.download = 'pose_preview_sample.png';
+    a.href = previewCanvas.toDataURL('image/png');
+    a.click();
 });
 </script>
 </body>
