@@ -28,7 +28,7 @@ Documentation = "https://github.com/ketle-man/comfyui-2dpose-editor/wiki"
 "Bug Tracker" = "https://github.com/ketle-man/comfyui-2dpose-editor/issues"
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "statsu"
 DisplayName = "comfyui-2dpose-editor"
 Icon = ""
 includes = [] 
