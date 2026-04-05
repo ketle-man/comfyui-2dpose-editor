@@ -7,6 +7,28 @@ import { app } from "../../scripts/app.js";
 // 背景合成・Image Input Mode・出力サイズモード対応
 // ============================================================
 
+// ---- ワークフロー保存時に image_data の base64 を除外するフック ----
+// ComfyUI はタブ切り替え等で graph.serialize() を呼んでドラフト保存するため、
+// 大きな base64 文字列が含まれると "Failed to save workflow draft" が発生する。
+// LGraph.serialize をラップし、直列化結果の JSON からのみ image_data を除去する。
+// 実行時プロンプト構築（graphToPrompt）には一切手を加えない。
+setTimeout(() => {
+    if (!app.graph) return;
+    const _origSerialize = app.graph.serialize.bind(app.graph);
+    app.graph.serialize = function (...args) {
+        const data = _origSerialize(...args);
+        if (data?.nodes) {
+            for (const n of data.nodes) {
+                if (n.type !== "PoseEditor2D") continue;
+                if (!n.widgets_values) continue;
+                // image_data は widgets_values[0]（INPUT_TYPES の required 先頭）
+                n.widgets_values[0] = "";
+            }
+        }
+        return data;
+    };
+}, 500);
+
 app.registerExtension({
     name: "Comfy.2DPoseEditor",
 
@@ -22,7 +44,10 @@ app.registerExtension({
             setTimeout(() => {
                 for (const name of ["image_data", "output_size_mode", "custom_width", "custom_height"]) {
                     const w = node.widgets?.find(w => w.name === name);
-                    if (w) { w.computeSize = () => [0, -4]; w.hidden = true; }
+                    if (w) {
+                        w.computeSize = () => [0, -4];
+                        w.hidden = true;
+                    }
                 }
                 node.setDirtyCanvas(true, true);
             }, 0);
@@ -322,9 +347,8 @@ app.registerExtension({
 
             // --- キャプチャ ---
             captureBtn.addEventListener("click", () => {
-                const dataUrl = editor.captureWithoutRig();
                 const imgWidget = node.widgets?.find(w => w.name === "image_data");
-                if (imgWidget) imgWidget.value = dataUrl;
+                if (imgWidget) imgWidget.value = editor.captureWithoutRig();
                 captureBtn.textContent = "✅ Captured!";
                 captureBtn.style.background = "#28a745";
                 setTimeout(() => {
@@ -338,11 +362,11 @@ app.registerExtension({
             cameraResetBtn.addEventListener("click", () => editor.resetCamera());
 
             // --- DOM ウィジェット ---
+            // getValue はワークフロー保存時にも呼ばれるため、
+            // 大きな base64 データを返すと "Failed to save workflow draft" が発生する。
+            // シリアライズ時は空文字を返し、実行時は image_data ウィジェット経由で渡す。
             node.addDOMWidget("pose_editor_widget", "pose_editor", container, {
-                getValue() {
-                    const imgWidget = node.widgets?.find(w => w.name === "image_data");
-                    return imgWidget?.value ?? "";
-                },
+                getValue() { return ""; },
                 setValue() {},
                 computeSize() { return [410, 490]; },
             });

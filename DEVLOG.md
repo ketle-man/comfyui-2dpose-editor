@@ -2,6 +2,25 @@
 
 ---
 
+## v1.1.0 — 2026-04-05
+
+### Overview
+Bug fixes: aspect ratio preservation on output, workflow draft save error, and
+`export_pose` keyword argument error when `background_image` is not connected.
+
+### Fixed
+- **Aspect ratio preserved on output** — pose image is now fitted with `contain` scaling
+  (letterbox) instead of stretching to fill the output canvas; background image still
+  fills the canvas as before
+- **"Failed to save workflow draft" error on tab switch** — `app.graph.serialize` is
+  wrapped to strip `image_data` base64 from the saved JSON; execution-time prompt
+  construction is unaffected so captured poses are still sent correctly to the backend
+- **`TypeError: export_pose() got an unexpected keyword argument 'background_image'`** —
+  added `**kwargs` to `export_pose` and `IS_CHANGED` to absorb any extra parameters
+  passed by the ComfyUI execution engine
+
+---
+
 ## v0.4.0 — 2026-03-17
 
 ### Overview
