@@ -170,12 +170,40 @@ app.registerExtension({
                 texBtn.title = texInput.files[0]?.name ?? "Load Texture";
             });
 
+            // 背景色ピッカー + クリア(透明化)ボタン
+            const bgColorLbl = document.createElement("span");
+            bgColorLbl.textContent = "🎨BG:";
+            bgColorLbl.style.cssText = "color:#aaa;font-size:10px;white-space:nowrap;";
+            const bgColorPick = document.createElement("input");
+            bgColorPick.type = "color";
+            bgColorPick.value = "#e0e0e0";
+            bgColorPick.title = "Background color";
+            bgColorPick.style.cssText = "width:28px;height:22px;border:none;cursor:pointer;background:none;padding:0;flex-shrink:0;";
+            const bgColorClearBtn = makeSmallButton("✕", "#5a3a3a", "Clear background color (transparent)");
+            bgColorClearBtn.style.padding = "3px 7px";
+
+            // 背景画像ロード / クリア
+            const bgImgInput = document.createElement("input");
+            bgImgInput.type = "file";
+            bgImgInput.accept = "image/*";
+            bgImgInput.style.cssText = "display:none;";
+            const bgImgBtn = makeSmallButton("📂 BG", "#3a5a3a", "Load background image");
+            bgImgBtn.addEventListener("click", () => bgImgInput.click());
+            const bgImgClearBtn = makeSmallButton("✕", "#5a3a3a", "Clear background image");
+            bgImgClearBtn.style.display = "none";
+
             partsRow.appendChild(btnToggleHead);
             partsRow.appendChild(btnToggleBody);
             partsRow.appendChild(btnToggleLHand);
             partsRow.appendChild(btnToggleRHand);
             partsRow.appendChild(texBtn);
             partsRow.appendChild(texInput);
+            partsRow.appendChild(bgColorLbl);
+            partsRow.appendChild(bgColorPick);
+            partsRow.appendChild(bgColorClearBtn);
+            partsRow.appendChild(bgImgBtn);
+            partsRow.appendChild(bgImgInput);
+            partsRow.appendChild(bgImgClearBtn);
 
             // --- キャンバス（480px の80% = 384px） ---
             const CVS_DISPLAY = 384;
@@ -189,6 +217,19 @@ app.registerExtension({
             cvs.addEventListener("mouseup",   () => { cvs.style.cursor = "grab"; });
             cvs.addEventListener("mouseleave",() => { cvs.style.cursor = "grab"; });
 
+            // --- アスペクト比フレームオーバーレイ ---
+            const overlayCvs = document.createElement("canvas");
+            overlayCvs.width = CVS_DISPLAY; overlayCvs.height = CVS_DISPLAY;
+            overlayCvs.style.cssText =
+                `position:absolute;top:0;left:0;width:${CVS_DISPLAY}px;height:${CVS_DISPLAY}px;` +
+                "pointer-events:none;border-radius:6px;";
+
+            const cvsWrapper = document.createElement("div");
+            cvsWrapper.style.cssText =
+                `position:relative;width:${CVS_DISPLAY}px;height:${CVS_DISPLAY}px;flex-shrink:0;`;
+            cvsWrapper.appendChild(cvs);
+            cvsWrapper.appendChild(overlayCvs);
+
             // --- Image Input Mode 用プレビューキャンバス ---
             const imgPreviewCvs = document.createElement("canvas");
             imgPreviewCvs.width = 600; imgPreviewCvs.height = 600;
@@ -200,15 +241,56 @@ app.registerExtension({
             container.appendChild(modeRow);
             container.appendChild(sizeRow);
             container.appendChild(partsRow);
-            container.appendChild(cvs);
+            container.appendChild(cvsWrapper);
             container.appendChild(imgPreviewCvs);
 
             // ============================================================
             // --- リギングエディタ初期化 ---
             // ============================================================
+            let bgAspect = null;
+
             const editor = initPoseEditor(cvs, {
                 btnToggleHead, btnToggleBody, btnToggleLHand, btnToggleRHand, texInput,
+                bgColorPick, bgColorClearBtn, bgImgInput, bgImgClearBtn,
+                onBgLoad: (aspect) => { bgAspect = aspect; drawOverlay(); },
             });
+
+            // ---- アスペクト比フレーム計算 ----
+            function getFrameRect() {
+                let ar = 1;
+                if (outputSizeMode === "Custom") {
+                    ar = customW / customH;
+                } else if (outputSizeMode === "Background" && bgAspect != null) {
+                    ar = bgAspect;
+                }
+                let fw, fh;
+                if (ar >= 1) {
+                    fw = CVS_DISPLAY;
+                    fh = Math.round(CVS_DISPLAY / ar);
+                } else {
+                    fh = CVS_DISPLAY;
+                    fw = Math.round(CVS_DISPLAY * ar);
+                }
+                const fx = Math.round((CVS_DISPLAY - fw) / 2);
+                const fy = Math.round((CVS_DISPLAY - fh) / 2);
+                return { x: fx, y: fy, w: fw, h: fh };
+            }
+
+            function drawOverlay() {
+                const oc = overlayCvs.getContext("2d");
+                oc.clearRect(0, 0, CVS_DISPLAY, CVS_DISPLAY);
+                const { x, y, w, h } = getFrameRect();
+                if (x === 0 && y === 0 && w === CVS_DISPLAY && h === CVS_DISPLAY) return;
+                oc.fillStyle = "rgba(0,0,0,0.75)";
+                if (y > 0)                  oc.fillRect(0, 0, CVS_DISPLAY, y);
+                if (y + h < CVS_DISPLAY)    oc.fillRect(0, y + h, CVS_DISPLAY, CVS_DISPLAY - (y + h));
+                if (x > 0)                  oc.fillRect(0, y, x, h);
+                if (x + w < CVS_DISPLAY)    oc.fillRect(x + w, y, CVS_DISPLAY - (x + w), h);
+                oc.strokeStyle = "rgba(255,255,255,0.4)";
+                oc.lineWidth = 1;
+                oc.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+            }
+            drawOverlay();
 
             // ============================================================
             // --- applyMode: UI の表示/非表示切り替え ---
@@ -218,7 +300,7 @@ app.registerExtension({
                     // Image Input Mode
                     sizeRow.style.display        = "none";
                     partsRow.style.display       = "none";
-                    cvs.style.display            = "none";
+                    cvsWrapper.style.display     = "none";
                     captureBtn.style.display     = "none";
                     resetBtn.style.display       = "none";
                     cameraResetBtn.style.display = "none";
@@ -233,7 +315,7 @@ app.registerExtension({
                     // Pose Editor Mode
                     sizeRow.style.display        = "flex";
                     partsRow.style.display       = "flex";
-                    cvs.style.display            = "block";
+                    cvsWrapper.style.display     = "";
                     captureBtn.style.display     = "";
                     resetBtn.style.display       = "";
                     cameraResetBtn.style.display = "";
@@ -283,11 +365,20 @@ app.registerExtension({
                     loadedImageData = ev.target.result;
                     const img = new Image();
                     img.onload = () => {
-                        imgPreviewCvs.width  = img.naturalWidth;
-                        imgPreviewCvs.height = img.naturalHeight;
+                        // 常に CVS_DISPLAY×CVS_DISPLAY の正方形キャンバスに letterbox 描画
+                        const ar = img.naturalWidth / img.naturalHeight;
+                        let dw, dh;
+                        if (ar >= 1) { dw = CVS_DISPLAY; dh = Math.round(CVS_DISPLAY / ar); }
+                        else         { dh = CVS_DISPLAY; dw = Math.round(CVS_DISPLAY * ar); }
+                        imgPreviewCvs.width  = CVS_DISPLAY;
+                        imgPreviewCvs.height = CVS_DISPLAY;
                         imgPreviewCvs.style.width  = `${CVS_DISPLAY}px`;
-                        imgPreviewCvs.style.height = Math.round(CVS_DISPLAY * img.naturalHeight / img.naturalWidth) + "px";
-                        imgPreviewCvs.getContext("2d").drawImage(img, 0, 0);
+                        imgPreviewCvs.style.height = `${CVS_DISPLAY}px`;
+                        const pCtx = imgPreviewCvs.getContext("2d");
+                        pCtx.clearRect(0, 0, CVS_DISPLAY, CVS_DISPLAY);
+                        pCtx.drawImage(img,
+                            Math.round((CVS_DISPLAY - dw) / 2),
+                            Math.round((CVS_DISPLAY - dh) / 2), dw, dh);
                         const imgWidget = node.widgets?.find(w => w.name === "image_data");
                         if (imgWidget) imgWidget.value = loadedImageData;
                     };
@@ -328,13 +419,14 @@ app.registerExtension({
                 btnSizeCst.style.background = mode === "Custom"     ? "#3a5a3a" : "#555";
                 customSizeInput.style.display = mode === "Custom" ? "flex" : "none";
                 syncBackendWidgets();
+                drawOverlay();
             }
             btnSizeStd.addEventListener("click", () => setSizeMode("Standard"));
             btnSizeBg.addEventListener("click",  () => setSizeMode("Background"));
             btnSizeCst.addEventListener("click", () => setSizeMode("Custom"));
 
-            wInput.addEventListener("change", () => { customW = parseInt(wInput.value) || 600; syncBackendWidgets(); });
-            hInput.addEventListener("change", () => { customH = parseInt(hInput.value) || 600; syncBackendWidgets(); });
+            wInput.addEventListener("change", () => { customW = parseInt(wInput.value) || 600; syncBackendWidgets(); drawOverlay(); });
+            hInput.addEventListener("change", () => { customH = parseInt(hInput.value) || 600; syncBackendWidgets(); drawOverlay(); });
 
             // ============================================================
             // --- リグ表示切り替え ---
@@ -348,7 +440,24 @@ app.registerExtension({
             // --- キャプチャ ---
             captureBtn.addEventListener("click", () => {
                 const imgWidget = node.widgets?.find(w => w.name === "image_data");
-                if (imgWidget) imgWidget.value = editor.captureWithoutRig();
+                if (imgWidget) {
+                    const { x, y, w, h } = getFrameRect();
+                    const isSquare = x === 0 && y === 0 && w === CVS_DISPLAY && h === CVS_DISPLAY;
+
+                    let outW = 600, outH = 600;
+                    if (outputSizeMode === "Custom") {
+                        outW = customW; outH = customH;
+                    } else if (outputSizeMode === "Background" && bgAspect != null) {
+                        if (bgAspect >= 1) { outW = 600; outH = Math.round(600 / bgAspect); }
+                        else               { outH = 600; outW = Math.round(600 * bgAspect); }
+                    }
+
+                    imgWidget.value = isSquare
+                        ? editor.captureWithoutRig()
+                        : editor.captureWithoutRig({
+                            cropRect: { x, y, w, h, outW, outH, displaySize: CVS_DISPLAY },
+                          });
+                }
                 captureBtn.textContent = "✅ Captured!";
                 captureBtn.style.background = "#28a745";
                 setTimeout(() => {
@@ -427,7 +536,7 @@ function makeButton(label, bg) {
 // リギングエディタ本体（index_v2.html のロジックを移植）
 // カメラ操作・頭/体/手切り替え・テクスチャアトラス(UV)対応
 // ============================================================
-function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, btnToggleRHand, texInput }) {
+function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, btnToggleRHand, texInput, bgColorPick, bgColorClearBtn, bgImgInput, bgImgClearBtn, onBgLoad }) {
     const ctx = canvas.getContext("2d");
     const CANVAS_W = canvas.width;
     const CANVAS_H = canvas.height;
@@ -671,9 +780,69 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
     // ---- リグ表示フラグ ----
     let showRig = true;
 
+    // ---- 背景画像 ----
+    let bgImage = null;
+
+    bgImgInput?.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                bgImage = img;
+                if (bgImgClearBtn) bgImgClearBtn.style.display = "";
+                onBgLoad?.(img.naturalWidth / img.naturalHeight);
+                draw();
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    bgImgClearBtn?.addEventListener("click", () => {
+        bgImage = null;
+        if (bgImgInput) bgImgInput.value = "";
+        bgImgClearBtn.style.display = "none";
+        onBgLoad?.(null);
+        draw();
+    });
+
+    // ---- 背景色 有効/無効フラグ ----
+    let bgColorEnabled = true;
+
+    bgColorClearBtn?.addEventListener("click", () => {
+        bgColorEnabled = false;
+        bgColorClearBtn.style.background = "#2a2a2a";
+        bgColorClearBtn.style.color = "#888";
+        draw();
+    });
+
+    // 背景色変更時に再描画（色を選び直したら有効化に戻す）
+    bgColorPick?.addEventListener("input", () => {
+        bgColorEnabled = true;
+        if (bgColorClearBtn) {
+            bgColorClearBtn.style.background = "#5a3a3a";
+            bgColorClearBtn.style.color = "#fff";
+        }
+        draw();
+    });
+
     // ---- 描画 ----
     function draw() {
         ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+        if (bgColorPick && bgColorEnabled) {
+            ctx.fillStyle = bgColorPick.value;
+            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+        }
+        if (bgImage) {
+            const imgAr = bgImage.naturalWidth / bgImage.naturalHeight;
+            let dw, dh;
+            if (imgAr >= 1) { dw = CANVAS_W; dh = Math.round(CANVAS_W / imgAr); }
+            else             { dh = CANVAS_H; dw = Math.round(CANVAS_H * imgAr); }
+            ctx.drawImage(bgImage,
+                Math.round((CANVAS_W - dw) / 2), Math.round((CANVAS_H - dh) / 2), dw, dh);
+        }
         ctx.save();
         // カメラ変換
         ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
@@ -984,11 +1153,31 @@ function initPoseEditor(canvas, { btnToggleHead, btnToggleBody, btnToggleLHand, 
     }
 
     // ---- リグ非表示でキャプチャ（dataURL を返す） ----
-    function captureWithoutRig() {
+    // opts.cropRect = { x, y, w, h, outW, outH, displaySize }
+    //   x/y/w/h    : overlayCvs 座標系（displaySize ピクセル正方形内）
+    //   outW/outH  : 出力画像サイズ
+    //   displaySize: CVS_DISPLAY 値（スケール計算用）
+    function captureWithoutRig(opts = {}) {
         const wasShowRig = showRig;
         showRig = false;
         draw();
-        const dataUrl = canvas.toDataURL("image/png");
+
+        let dataUrl;
+        if (opts.cropRect) {
+            const { x, y, w, h, outW, outH, displaySize } = opts.cropRect;
+            const scale = CANVAS_W / displaySize;
+            const offCanvas = document.createElement("canvas");
+            offCanvas.width  = outW;
+            offCanvas.height = outH;
+            offCanvas.getContext("2d").drawImage(canvas,
+                Math.round(x * scale), Math.round(y * scale),
+                Math.round(w * scale), Math.round(h * scale),
+                0, 0, outW, outH);
+            dataUrl = offCanvas.toDataURL("image/png");
+        } else {
+            dataUrl = canvas.toDataURL("image/png");
+        }
+
         showRig = wasShowRig;
         draw();
         return dataUrl;

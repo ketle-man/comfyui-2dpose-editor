@@ -2,6 +2,49 @@
 
 ---
 
+## v1.2.0 — 2026-04-25
+
+### Overview
+Background color/image controls, aspect ratio frame overlay, and aspect-correct capture output.
+Also fixes Image Input Mode preview overflow.
+
+### Added
+- **Background color picker** (`🎨 BG:`) in the parts row — sets a solid fill color behind the pose
+  - Default: `#e0e0e0` (matches previous canvas background)
+  - `✕` button clears the fill to transparent (alpha-0); picking a new color re-enables it
+  - Intended use: clear to transparent when `background_image` is connected via node input,
+    so the node-input background is not obscured
+- **Background image loader** (`📂 BG`) — loads a local image file as an additional background layer
+  - Displayed with letterbox (aspect ratio preserved, centered)
+  - `✕` button clears the loaded image and resets the aspect ratio frame
+- **Aspect ratio frame overlay** (`overlayCvs`) — a transparent canvas overlaid on `cvsWrapper`
+  - Darkens the area outside the active output frame (semi-transparent black, opacity 0.75)
+  - Draws a white border around the active frame
+  - Active frame is determined by `getFrameRect()`:
+    - `Custom` mode → `customW / customH`
+    - `Background` mode + loaded BG image → image's natural aspect ratio
+    - `Standard` / `Background` with no local image → 1:1 (no overlay)
+  - Updates on: size mode change, W/H input change, BG image load/clear
+- **Aspect-correct capture** — `captureWithoutRig(opts)` now accepts `opts.cropRect`
+  - When the output frame is not 1:1, the canvas is cropped to the frame region and scaled to `outW × outH`
+  - Capture button computes `outW`/`outH` from `outputSizeMode` / `bgAspect` / `customW,H`
+  - Standard (square) mode still returns the full 600×600 canvas unchanged
+
+### Fixed
+- **Image Input Mode preview overflow** — `imgPreviewCvs` previously set its CSS height to match
+  the image's natural aspect ratio, causing tall images to exceed the fixed node height
+  - Now always rendered as `CVS_DISPLAY × CVS_DISPLAY` (384×384) with letterbox centering
+- **`cvsWrapper` not hidden in Image Input Mode** — `applyMode()` previously only hid `cvs`
+  (the canvas element) while the wrapper div retained its 384 px height, pushing `imgPreviewCvs`
+  below the node boundary; fixed by toggling `cvsWrapper.style.display` instead
+
+### Changed
+- `draw()` background image rendering changed from stretch-fill to letterbox (aspect preserved)
+- `captureWithoutRig` signature: `captureWithoutRig(opts = {})` — backward compatible (no opts = original behavior)
+- `initPoseEditor` now accepts `bgColorPick`, `bgColorClearBtn`, `bgImgInput`, `bgImgClearBtn`, `onBgLoad` in its options object
+
+---
+
 ## v1.1.0 — 2026-04-05
 
 ### Overview

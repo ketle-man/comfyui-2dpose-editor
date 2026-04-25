@@ -6,7 +6,7 @@ Drag joints to pose the figure, then capture it as an `IMAGE` output.
 ノード内で 2D リギングフィギュアをドラッグしてポーズを編集し、`IMAGE` として出力する ComfyUI カスタムノードです。
 
 ![2D Pose Editor](https://img.shields.io/badge/ComfyUI-Custom%20Node-blue)
-![Version](https://img.shields.io/badge/version-0.4.0-green)
+![Version](https://img.shields.io/badge/version-1.2.0-green)
 
 ---
 
@@ -25,6 +25,10 @@ Drag joints to pose the figure, then capture it as an `IMAGE` output.
 - 🖼 **Background compositing** — connect a background `IMAGE` to composite the pose over it
 - 📂 **Image Input Mode** — switch the node to image loader mode (P/I toggle), supports drag & drop
 - 📐 **Output size mode** — Standard / Background / Custom width×height
+- 🎨 **Background color picker** — set a solid background color; `✕` button clears it to transparent
+- 📂 **Background image loader** — load a local image file as background; `✕` button clears it
+- 🖼️ **Aspect ratio overlay** — frame overlay shows the exact output region for Background / Custom modes
+- ✂️ **Aspect-correct capture** — captured image is cropped to the active frame (correct W×H output)
 
 ---
 
@@ -62,10 +66,17 @@ git clone https://github.com/ketle-man/comfyui-2dpose-editor.git
 - The loaded image is passed directly as the node output
 - Click **P** to return to pose editor mode
 
+#### Background Color & Image
+- **🎨 BG color picker** — sets a solid fill color behind the pose (default `#e0e0e0`)
+  - Click **✕** next to the picker to go transparent (useful when `background_image` is connected)
+- **📂 BG button** — loads a local image file as the background layer; displays letterboxed to fit the canvas
+  - Click **✕** next to the BG button to clear the loaded image
+
 #### Output Size
 - **Std** — use the canvas render size (600×600)
-- **BG** — match the connected `background_image` size
+- **BG** — match the aspect ratio of the loaded background image (or connected `background_image`)
 - **Custom** — specify width × height manually
+- An overlay darkens the area outside the active output frame so you can see exactly what will be captured
 
 ### Camera controls
 
@@ -136,6 +147,13 @@ Left (L) and Right (R) UV regions are separate, allowing asymmetric textures and
 ---
 
 ## Changelog
+
+### v1.2.0
+- Background color picker (`🎨 BG:`) with `✕` button to clear to transparent
+- Background image loader (`📂 BG`) with `✕` button to clear; displayed with letterbox (aspect preserved)
+- Aspect ratio frame overlay: darkens area outside active output region for Background / Custom modes
+- Capture crops to the active frame — output image has correct W×H (no post-process stretch)
+- Image Input Mode preview fixed: letterbox display, `cvsWrapper` hidden together to prevent node overflow
 
 ### v0.4.0
 - Capture always outputs rig-free image (temporarily hides rig during capture)
