@@ -10,6 +10,10 @@ Drag joints to pose the figure, then capture it as an `IMAGE` output.
 
 ---
 
+![screenshot](docs/screenshot_node.png)
+
+---
+
 ## Features / 機能
 
 - 🦴 **Full body rigging** — head, neck, chest, abdomen, arms, hands, legs, feet
@@ -42,6 +46,7 @@ git clone https://github.com/ketle-man/comfyui-2dpose-editor.git
 ```
 
 ### Option B: Manual
+
 1. Download this repository as a ZIP and extract it
 2. Place the `2dpose_custom_cm` folder inside `ComfyUI/custom_nodes/`
 3. Restart ComfyUI
@@ -60,19 +65,22 @@ git clone https://github.com/ketle-man/comfyui-2dpose-editor.git
 8. Click **Queue Prompt** — the node outputs the pose as an `IMAGE`
 9. Click **RP** (Reset Pose) to return to the default pose / **RC** (Reset Camera) to restore the view
 
-#### Image Input Mode
+### Image Input Mode
+
 - Click the **I** button to switch to image loader mode
 - Click **📂** to load a local image file, or **drag & drop** an image onto the node
 - The loaded image is passed directly as the node output
 - Click **P** to return to pose editor mode
 
-#### Background Color & Image
+### Background Color & Image
+
 - **🎨 BG color picker** — sets a solid fill color behind the pose (default `#e0e0e0`)
   - Click **✕** next to the picker to go transparent (useful when `background_image` is connected)
 - **📂 BG button** — loads a local image file as the background layer; displays letterboxed to fit the canvas
   - Click **✕** next to the BG button to clear the loaded image
 
-#### Output Size
+### Output Size
+
 - **Std** — use the canvas render size (600×600)
 - **BG** — match the aspect ratio of the loaded background image (or connected `background_image`)
 - **Custom** — specify width × height manually
